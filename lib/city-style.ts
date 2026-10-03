@@ -1,0 +1,172 @@
+import type { StyleSpecification } from "maplibre-gl";
+
+// Geographic context comes from OSM. Missing building heights use 8 m for display only.
+export const cityStyle: StyleSpecification = {
+  version: 8,
+  glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+  sources: {
+    city: {
+      type: "vector",
+      url: "https://tiles.openfreemap.org/planet",
+      attribution:
+        '<a href="https://openfreemap.org/">OpenFreeMap</a> · <a href="https://openmaptiles.org/">OpenMapTiles</a> · © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    },
+  },
+  light: {
+    anchor: "viewport",
+    color: "#fff8e6",
+    intensity: 0.45,
+    position: [1.4, 205, 38],
+  },
+  layers: [
+    {
+      id: "land",
+      type: "background",
+      paint: { "background-color": "#e7eade" },
+    },
+    {
+      id: "landuse",
+      type: "fill",
+      source: "city",
+      "source-layer": "landuse",
+      paint: { "fill-color": "#dce4d4", "fill-opacity": 0.65 },
+    },
+    {
+      id: "parks",
+      type: "fill",
+      source: "city",
+      "source-layer": "park",
+      paint: { "fill-color": "#c2d4bf", "fill-opacity": 0.8 },
+    },
+    {
+      id: "water",
+      type: "fill",
+      source: "city",
+      "source-layer": "water",
+      paint: { "fill-color": "#4995af", "fill-antialias": true },
+    },
+    {
+      id: "water-edge",
+      type: "line",
+      source: "city",
+      "source-layer": "water",
+      paint: {
+        "line-color": "#287790",
+        "line-width": 1.2,
+        "line-opacity": 0.6,
+      },
+    },
+    {
+      id: "waterways",
+      type: "line",
+      source: "city",
+      "source-layer": "waterway",
+      paint: {
+        "line-color": "#509db4",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 9, 0.5, 15, 3],
+      },
+    },
+    {
+      id: "road-casing",
+      type: "line",
+      source: "city",
+      "source-layer": "transportation",
+      minzoom: 10,
+      paint: {
+        "line-color": "#c7cfbe",
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          10,
+          1,
+          15,
+          7,
+          18,
+          18,
+        ],
+      },
+    },
+    {
+      id: "roads",
+      type: "line",
+      source: "city",
+      "source-layer": "transportation",
+      paint: {
+        "line-color": "#faf9f2",
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          8,
+          0.2,
+          12,
+          1.4,
+          15,
+          5,
+          18,
+          15,
+        ],
+      },
+    },
+    {
+      id: "building-footprints",
+      type: "fill",
+      source: "city",
+      "source-layer": "building",
+      minzoom: 12,
+      paint: { "fill-color": "#ced3c4", "fill-outline-color": "#b8c4b6" },
+    },
+    {
+      id: "city-buildings",
+      type: "fill-extrusion",
+      source: "city",
+      "source-layer": "building",
+      minzoom: 12,
+      paint: {
+        "fill-extrusion-color": "#f5f2e7",
+        "fill-extrusion-height": ["coalesce", ["get", "render_height"], 8],
+        "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
+        "fill-extrusion-opacity": 0.93,
+        "fill-extrusion-vertical-gradient": true,
+      },
+    },
+    {
+      id: "water-labels",
+      type: "symbol",
+      source: "city",
+      "source-layer": "waterway",
+      minzoom: 12,
+      layout: {
+        "symbol-placement": "line",
+        "text-field": ["coalesce", ["get", "name:th"], ["get", "name"], ""],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": 13,
+        "text-letter-spacing": 0.02,
+      },
+      paint: {
+        "text-color": "#216983",
+        "text-halo-color": "#f3f4e8",
+        "text-halo-width": 2,
+      },
+    },
+    {
+      id: "place-labels",
+      type: "symbol",
+      source: "city",
+      "source-layer": "place",
+      layout: {
+        "text-field": ["coalesce", ["get", "name:th"], ["get", "name"], ""],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 7, 11, 15, 15],
+        "text-max-width": 9,
+        "text-padding": 24,
+      },
+      paint: {
+        "text-color": "#64786e",
+        "text-halo-color": "#f3f4e8",
+        "text-halo-width": 2,
+      },
+    },
+  ],
+};

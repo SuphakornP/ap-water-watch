@@ -1,0 +1,5 @@
+{
+  "dataset": "synthetic-demo",
+  "outputRows": 6,
+  "note": "Synthetic demonstration points, not AP project locations."
+}
