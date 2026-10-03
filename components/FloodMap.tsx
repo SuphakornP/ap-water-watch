@@ -42,6 +42,7 @@ type Props = {
   items: Assessment[];
   stations?: Station[];
   focusId: string | null;
+  manualFocusRequest: number;
   onFocus: (id: string | null) => void;
   onSelect: (id: string) => void;
   reducedMotion: boolean;
@@ -68,6 +69,7 @@ export default function FloodMap({
   items,
   stations = [],
   focusId,
+  manualFocusRequest,
   onFocus,
   onSelect,
   reducedMotion,
@@ -119,6 +121,15 @@ export default function FloodMap({
   }, [expanded]);
   const stops = useMemo(() => tourProjects(items), [items]);
   const stopIds = stops.map((a) => a.project.id).join("|");
+
+  const [handledFocusRequest, setHandledFocusRequest] = useState(manualFocusRequest);
+  if (handledFocusRequest !== manualFocusRequest) {
+    setHandledFocusRequest(manualFocusRequest);
+    setTour(false);
+    setStationId(null);
+    setListOpen(false);
+    setLayersOpen(false);
+  }
 
   useEffect(() => {
     let disposed = false;
@@ -464,12 +475,12 @@ export default function FloodMap({
       duration: reducedMotion ? 0 : 1700,
       padding: {
         top: 0,
-        bottom: window.innerWidth <= 700 ? 300 : 0,
+        bottom: window.innerWidth <= 760 ? 300 : 0,
         left: 0,
-        right: window.innerWidth > 700 ? 250 : 0,
+        right: window.innerWidth > 760 ? 250 : 0,
       },
     });
-  }, [focusId, ready]);
+  }, [focusId, ready, manualFocusRequest]);
   useEffect(() => {
     if (!ready || !map.current || !sceneReady.current) return;
     const trigger =
@@ -532,7 +543,7 @@ export default function FloodMap({
         [Math.max(...xs), Math.max(...ys)],
       ],
       {
-        padding: window.innerWidth < 700 ? 45 : 90,
+        padding: window.innerWidth <= 760 ? 45 : 90,
         maxZoom: 14,
         pitch: city ? 45 : 0,
         duration: reducedMotion ? 0 : 1400,
@@ -574,9 +585,9 @@ export default function FloodMap({
       ],
       {
         padding:
-          window.innerWidth > 700
+          window.innerWidth > 760
             ? { top: 80, bottom: 170, left: 100, right: 350 }
-            : { top: 190, bottom: 365, left: 45, right: 45 },
+            : { top: 100, bottom: 300, left: 36, right: 36 },
         maxZoom: 14.2,
         pitch: 45,
         duration: reducedMotion ? 0 : 1300,
@@ -600,9 +611,7 @@ export default function FloodMap({
         <span className="city-kicker">
           <i /> AP WATER ATLAS <span> / 3D</span>
         </span>
-        <h2>
-          มองเมือง<span>เข้าใจน้ำ</span>
-        </h2>
+        <h2>โครงการและสถานี</h2>
         <p>
           {selected?.project.province ?? "สำรวจโครงการ AP บนแผนที่ประเทศไทย"}
         </p>
@@ -621,6 +630,7 @@ export default function FloodMap({
         <button
           className={listOpen ? "active" : ""}
           aria-pressed={listOpen}
+          aria-label={`รายการโครงการ ${items.length} โครงการ`}
           onClick={() => {
             setListOpen(!listOpen);
             setLayersOpen(false);
@@ -888,9 +898,11 @@ export default function FloodMap({
                         ? "เทียบตลิ่งไม่ได้"
                         : margin < 0
                           ? "สูงกว่าตลิ่ง"
-                          : "ต่ำกว่าตลิ่ง"}
+                          : margin === 0
+                            ? "เท่าระดับตลิ่ง"
+                            : "ต่ำกว่าตลิ่ง"}
                     </span>
-                    <b>
+                    <b className={margin !== null && margin <= 0 ? "warning-value" : ""}>
                       {margin === null ? "—" : Math.abs(margin).toFixed(2)}
                       <small>ม.</small>
                     </b>
@@ -920,7 +932,7 @@ export default function FloodMap({
                   ดูโครงการพร้อมสถานีอ้างอิง
                   <ArrowUpRight size={13} />
                 </button>
-                <div className="city-action-hint">
+                <div className={`city-action-hint ${selected.risk}`}>
                   <span>สิ่งที่ควรทำตอนนี้</span>
                   <b>
                     {selected.risk === "priority"
@@ -965,6 +977,7 @@ export default function FloodMap({
           มองจากบน
         </button>
         <button
+          aria-label="แสดงทุกโครงการบนแผนที่"
           onClick={() => {
             setTour(false);
             fitItems();
