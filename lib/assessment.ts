@@ -5,7 +5,7 @@ import type {
   Station,
 } from "./flood-types";
 export const FRESHNESS_HOURS = 6;
-export const DEFAULT_RADIUS_KM = 10;
+export const DEFAULT_RADIUS_KM = 5;
 export function isFresh(timestamp: string | null, now = Date.now()): boolean {
   if (!timestamp) return false;
   const age = now - Date.parse(timestamp);

@@ -62,7 +62,7 @@ import NearbyCameras from "./NearbyCameras";
 import { useCameras } from "@/lib/use-cameras";
 import { nearbyCameras, type CameraRadius } from "@/lib/cameras";
 import { useProjectTools } from "@/lib/use-project-tools";
-import { assessProject } from "@/lib/assessment";
+import { assessProject, DEFAULT_RADIUS_KM } from "@/lib/assessment";
 import {
   RISK_LABEL,
   RISK_ORDER,
@@ -628,7 +628,7 @@ export default function Dashboard() {
     [province, setProvince] = useState("all"),
     [brand, setBrand] = useState("all"),
     [risk, setRisk] = useState("all"),
-    [radius, setRadius] = useState("10");
+    [radius, setRadius] = useState(String(DEFAULT_RADIUS_KM));
   const [feed, setFeed] = useState<Feed>(initialFeed),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
