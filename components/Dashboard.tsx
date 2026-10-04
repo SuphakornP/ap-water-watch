@@ -1,4 +1,5 @@
 "use client";
+import releaseInfo from "@/data/release.json";
 import {
   useCallback,
   useDeferredValue,
@@ -53,7 +54,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import projectsJson from "@/data/projects.json";
-import releaseInfo from "@/data/release.json";
+import provinceIndex from "@/data/province-index.json";
 import FloodMap from "./FloodMap";
 import StationAnalysis from "./StationAnalysis";
 import { useProjectTools } from "@/lib/use-project-tools";
@@ -94,7 +95,8 @@ function number(value: number | null | undefined, precision = 2) {
   return value !== null && value !== undefined ? value.toFixed(precision) : "—";
 }
 function RiskLabel({ risk }: { risk: Risk }) {
-  return <span className={`risk-label ${risk}`}>{RISK_LABEL[risk]}</span>;
+  const Icon = risk === "priority" ? TriangleAlert : risk === "watch" ? Radio : risk === "normal" ? ShieldCheck : CircleHelp;
+  return <span className={`risk-label ${risk}`}><Icon size={15} aria-hidden="true" />{RISK_LABEL[risk]}</span>;
 }
 function AttentionProjects({
   items,
@@ -146,11 +148,13 @@ function AttentionProjects({
                   onClick={() => onFocus(item.project.id)}
                   aria-label={`ดู ${item.project.name} บนแผนที่`}
                   title="ดูบนแผนที่"
+                  aria-pressed={focusId === item.project.id}
                 >
                   <MapPin size={17} />
                 </button>
               </div>
               <h3>{item.project.name}</h3>
+              {focusId === item.project.id && <span className="selection-label">กำลังเลือก</span>}
               <p className="attention-reason">{item.reason}</p>
               {item.trigger && (
                 <small className="attention-time">วัด {time(item.trigger.observedAt)}</small>
@@ -343,7 +347,7 @@ function Stations({ assessment }: { assessment: Assessment }) {
         </div>
       ) : (
         stations.map((s) => (
-          <div className="station-row" key={s.id}>
+          <div className={`station-row ${!s.fresh ? "data-stale" : ""}`} key={s.id}>
             <span className={`station-symbol ${s.kind}`}>
               {s.kind === "water" ? (
                 <Waves size={18} />
@@ -369,6 +373,7 @@ function Stations({ assessment }: { assessment: Assessment }) {
               )}
             </div>
             <strong>
+              {!s.fresh && <small>ข้อมูลล่าช้า</small>}
               {number(s.value, s.kind === "rain" ? 1 : 2)}
               <small>{s.kind === "water" ? "ม.รทก." : "มม./24 ชม."}</small>
             </strong>
@@ -444,6 +449,12 @@ function Sources({
         )}
       </div>
       <div className="method-grid">
+        <article>
+          <h3>ขอบเขตจังหวัด 77 แห่ง</h3>
+          <p>ชั้นภูมิศาสตร์จาก Royal Thai Survey Department / OCHA / HDX ผ่าน prasertcbs/thailand_gis · ข้อมูลอ้างอิงปี 2565 แปลงเป็น GeoJSON สำหรับแสดงผล ไม่ใช่ขอบเขตน้ำท่วมหรือแนวเขตสำรวจล่าสุด</p>
+          <p><a href="https://github.com/prasertcbs/thailand_gis" target="_blank" rel="noreferrer">แหล่งข้อมูล GIS</a> · <a href="https://creativecommons.org/licenses/by/3.0/igo/" target="_blank" rel="noreferrer">CC BY-IGO 3.0</a> · <a href="/gis/thailand-provinces.provenance.json" target="_blank" rel="noreferrer">การแปลงและที่มา</a></p>
+          <p>การเลือกจังหวัดกรองตามจังหวัดในทะเบียนโครงการ ไม่ใช่การตรวจแปลงที่ดินกับแนวเขต</p>
+        </article>
         <article>
           <h3>โครงการ AP Thailand</h3>
           <p>
@@ -621,6 +632,8 @@ export default function Dashboard() {
     [focusId, setFocusId] = useState<string | null>(null),
     [focusRequest, setFocusRequest] = useState(0),
     [detailOpen, setDetailOpen] = useState(false),
+    [filtersOpen, setFiltersOpen] = useState(false),
+    [stationId, setStationId] = useState<string | null>(null),
     [motionReduced, setMotionReduced] = useState(false);
   const deferredSearch = useDeferredValue(search);
   const refresh = useCallback(async (signal?: AbortSignal) => {
@@ -676,11 +689,12 @@ export default function Dashboard() {
   const provinces = useMemo(
     () =>
       [
-        ...new Set(
-          projects
+        ...new Set([
+          ...projects
             .filter((p) => region === "all" || p.region === region)
             .map((p) => p.province ?? "ยังไม่ระบุจังหวัด"),
-        ),
+          ...(region === "all" ? provinceIndex.map(p => p.name) : []),
+        ]),
       ].sort((a, b) => a.localeCompare(b, "th")),
     [region],
   );
@@ -719,15 +733,33 @@ export default function Dashboard() {
     [scoped, risk],
   );
   useProjectTools(rows, Number(radius));
-  const focused = rows.find((a) => a.project.id === focusId) ?? rows[0];
+  const focused = rows.find((a) => a.project.id === focusId);
+  useEffect(() => {
+    if (focusId && !rows.some(a => a.project.id === focusId)) {
+      setFocusId(null);
+      setStationId(null);
+      setDetailOpen(false);
+    }
+  }, [rows, focusId]);
   const healthy = feed.sources.filter((s) => s.state === "ok").length;
-  function selectProject(id: string) {
+  function chooseStation(id: string | null) {
+    setStationId(id);
+    if (id && focused && ![...focused.water, ...focused.rain].some(s => s.id === id)) setFocusId(null);
+  }
+  const chooseProject = useCallback((id: string | null) => {
     setFocusId(id);
+    setStationId(null);
+  }, []);
+  useEffect(() => {
+    if (stationId && focused && ![...focused.water, ...focused.rain].some(s => s.id === stationId)) setStationId(null);
+  }, [focused, stationId]);
+  function selectProject(id: string) {
+    chooseProject(id);
     setFocusRequest((request) => request + 1);
     setDetailOpen(true);
   }
   function focusProject(id: string) {
-    setFocusId(id);
+    chooseProject(id);
     setFocusRequest((request) => request + 1);
     requestAnimationFrame(() => {
       document.getElementById("project-map")?.scrollIntoView({
@@ -797,7 +829,7 @@ export default function Dashboard() {
                   className={
                     loading
                       ? "loading-dot"
-                      : healthy === 3
+                      : error ? "error-dot" : healthy === feed.sources.length && healthy > 0
                         ? "connected-dot"
                         : "partial-dot"
                   }
@@ -806,9 +838,9 @@ export default function Dashboard() {
                   ? "กำลังอัปเดตข้อมูล"
                   : error
                     ? "รับข้อมูลล่าสุดไม่สำเร็จ"
-                    : healthy === 3
+                    : healthy === feed.sources.length && healthy > 0
                       ? "เชื่อมต่อข้อมูลเปิดแล้ว"
-                      : `แหล่งข้อมูลพร้อม ${healthy}/3`}
+                      : `แหล่งข้อมูลพร้อม ${healthy}/${feed.sources.length || 3}`}
               </span>
               <small>
                 {feed.fetchedAt
@@ -825,6 +857,11 @@ export default function Dashboard() {
             </div>
           </div>
           {releaseInfo.demo && <div className="data-alert" role="status"><Info size={16}/>โหมดตัวอย่าง · พิกัดสาธิต ไม่ใช่โครงการ AP จริง · ค่าสถานีมาจากข้อมูลเปิด</div>}
+          <div className="decision-summary" aria-live="polite">
+            <Waves size={22} aria-hidden="true" />
+            <p>{loading && !feed.fetchedAt ? "กำลังตรวจสัญญาณน้ำและฝน" : counts.priority > 0 ? <><b>{counts.priority} โครงการควรตรวจสอบก่อน</b><span>ยืนยันหน้างานจากสัญญาณสถานีใกล้เคียง</span></> : counts.watch > 0 ? <><b>{counts.watch} โครงการควรเฝ้าระวัง</b><span>ตรวจสถานีและเตรียมระบบระบายน้ำ</span></> : <><b>ติดตามข้อมูลรอบโครงการ</b><span>{counts.unknown} โครงการยังมีข้อมูลไม่เพียงพอ</span></>}</p>
+            {rows[0] && <button onClick={() => focusProject(rows[0].project.id)}>เริ่มตรวจสอบ <MapPin size={16} /></button>}
+          </div>
           {error && (
             <div className="data-alert" role="alert">
               <TriangleAlert size={17} />
@@ -892,7 +929,7 @@ export default function Dashboard() {
               <small>ออกเมื่อ {time(feed.warning.issuedAt)}</small>
             </div>
           )}
-          <div className="filters">
+          <div className={`filters ${filtersOpen ? "is-expanded" : ""}`}>
             <div className="search-box">
               <Search size={18} />
               <input
@@ -907,6 +944,7 @@ export default function Dashboard() {
                 </button>
               )}
             </div>
+            <button className="filter-disclosure" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={18} />ตัวกรอง{anyFilter ? " · ใช้งาน" : ""}</button>
             <FilterSelect
               label="ภูมิภาค"
               value={region}
@@ -1003,7 +1041,11 @@ export default function Dashboard() {
                     stations={feed.stations}
                     focusId={focusId}
                     manualFocusRequest={focusRequest}
-                    onFocus={setFocusId}
+                    onFocus={chooseProject}
+                    stationId={stationId}
+                    onStationSelect={chooseStation}
+                    province={province}
+                    onProvinceSelect={(value) => { setProvince(value); setRegion("all"); chooseProject(null); }}
                     onSelect={selectProject}
                     reducedMotion={motionReduced}
                   />
@@ -1022,7 +1064,7 @@ export default function Dashboard() {
                       </TableHeader>
                       <TableBody>
                         {rows.map((a) => (
-                          <TableRow key={a.project.id}>
+                          <TableRow key={a.project.id} data-selected={focusId === a.project.id}>
                             <TableCell>
                               <button
                                 className="table-project"
@@ -1098,12 +1140,15 @@ export default function Dashboard() {
                       <span>โครงการที่เลือก</span>
                       <h3>{focused.project.name}</h3>
                     </div>
-                    <RiskLabel risk={focused.risk} />
+                    <div className="selection-context"><RiskLabel risk={focused.risk} /><button onClick={() => chooseProject(null)}>กลับภาพรวม <X size={16} /></button></div>
                   </div>
                   {feed.fetchedAt ? (
                     <StationAnalysis
                       key={focused.project.id}
                       assessment={focused}
+                      stationId={stationId}
+                      onStationChange={chooseStation}
+                      reducedMotion={motionReduced}
                     />
                   ) : (
                     <p role="status" className="measurement-note">
@@ -1130,7 +1175,7 @@ export default function Dashboard() {
             <div className="empty-selection">
               <Box size={22} />
               <span>
-                เลือกตัวกรองที่มีโครงการ เพื่อดูภาพระดับน้ำและแนวทางเตรียมพร้อม
+                เลือกโครงการเพื่อดูสถานีอ้างอิง ระดับน้ำ และสิ่งที่ควรทำ
               </span>
             </div>
           )}

@@ -1,0 +1,39 @@
+{
+  "title": "Thailand province administrative boundaries (display layer)",
+  "sourceRepository": "https://github.com/prasertcbs/thailand_gis",
+  "sourceCommit": "1926690c14851700ad517522a279b0248e3bbbc6",
+  "sourcePath": "tha_adm1/tha_adm1_province.json",
+  "sourceBlobSha1": "965e36d5660048e11816972cb69d4f6a690fc384",
+  "sourceUrl": "https://raw.githubusercontent.com/prasertcbs/thailand_gis/1926690c14851700ad517522a279b0248e3bbbc6/tha_adm1/tha_adm1_province.json",
+  "upstreamDataset": "https://data.humdata.org/dataset/cod-ab-tha",
+  "licenseMetadataUrl": "https://data.humdata.org/api/3/action/package_show?id=cod-ab-tha",
+  "license": "CC BY-IGO 3.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/3.0/igo/legalcode",
+  "attribution": "Royal Thai Survey Department; OCHA/HDX; geographic conversion by prasertcbs/thailand_gis; GeoJSON adaptation by AP Water Watch.",
+  "retrievedOn": "2026-10-04",
+  "sourceFeatureValidOn": [
+    "2022-01-22T00:00:00.000Z"
+  ],
+  "crs": "WGS84 geographic coordinates; GeoJSON longitude, latitude (EPSG:4326)",
+  "transformations": [
+    "Decode TopoJSON delta-encoded shared arcs and negative arc references.",
+    "Preserve source Polygon/MultiPolygon topology and every source vertex; no additional simplification or reprojection.",
+    "Round coordinates to six decimal places (sub-metre precision; source quantization is coarser).",
+    "Normalize polygon winding to RFC 7946 (outer counterclockwise, holes clockwise).",
+    "Retain province code and Thai/English names; derive feature and collection bounding boxes; omit unrelated date/sentinel/area fields."
+  ],
+  "featureCount": 77,
+  "sourceSharedArcVertexCount": 26984,
+  "geojsonCoordinateCount": 43514,
+  "bbox": [
+    97.343473,
+    5.613038,
+    105.636965,
+    20.465024
+  ],
+  "bytes": 984522,
+  "gzipBytes": 305745,
+  "sha256": "53850bfa9b5d07f9592cb354f140cf2bf5bdd2d45e776fe73f37fce3bde05750",
+  "useLimit": "Generalized administrative reference only; not survey precision, flood extent, catchment, hydrologic connectivity, project boundary, or confirmation of current legal boundaries.",
+  "validation": "77 unique province codes/names; finite coordinates within Thailand bounds; connected source arcs; closed nondegenerate rings; RFC 7946 winding. Browser rendering and formal polygon self-intersection validation pending."
+}

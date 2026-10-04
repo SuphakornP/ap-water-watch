@@ -29,6 +29,9 @@ import { Switch } from "@/components/ui/switch";
 import { cityStyle } from "@/lib/city-style";
 import { stationRisk, tourProjects } from "@/lib/map-signals";
 import { representativeWater, bankMargin, isFresh } from "@/lib/assessment";
+import { initialRainPeriod, representativeRain, mapPadding } from "@/lib/presentation";
+import WaterLevelGauge from "./WaterLevelGauge";
+import provinceIndex from "@/data/province-index.json";
 import {
   RISK_COLOR,
   RISK_LABEL,
@@ -46,6 +49,10 @@ type Props = {
   onFocus: (id: string | null) => void;
   onSelect: (id: string) => void;
   reducedMotion: boolean;
+  stationId: string | null;
+  onStationSelect: (id: string | null) => void;
+  province: string;
+  onProvinceSelect: (province: string) => void;
 };
 const initialCamera = {
   center: [100.515, 13.723] as [number, number],
@@ -73,6 +80,10 @@ export default function FloodMap({
   onFocus,
   onSelect,
   reducedMotion,
+  stationId,
+  onStationSelect,
+  province,
+  onProvinceSelect,
 }: Props) {
   const host = useRef<HTMLDivElement>(null),
     map = useRef<CityMap | null>(null);
@@ -81,6 +92,7 @@ export default function FloodMap({
   const [ready, setReady] = useState(false),
     [error, setError] = useState("");
   const [water, setWater] = useState(true),
+    [boundaries, setBoundaries] = useState(false),
     [rain, setRain] = useState(false),
     [buildings, setBuildings] = useState(true),
     [city, setCity] = useState(true),
@@ -90,18 +102,20 @@ export default function FloodMap({
     [help, setHelp] = useState(false),
     [expanded, setExpanded] = useState(false);
   const [tour, setTour] = useState(false),
-    [tourIndex, setTourIndex] = useState(0),
-    [stationId, setStationId] = useState<string | null>(null);
+    [tourIndex, setTourIndex] = useState(0);
   const [zoom, setZoom] = useState(initialCamera.zoom);
-  const latest = useRef({ items, stations, onFocus });
+  const latest = useRef({ items, stations, onFocus, onProvinceSelect, onStationSelect });
   useEffect(() => {
-    latest.current = { items, stations, onFocus };
-  }, [items, stations, onFocus]);
+    latest.current = { items, stations, onFocus, onProvinceSelect, onStationSelect };
+  }, [items, stations, onFocus, onProvinceSelect, onStationSelect]);
+  function setStationId(id: string | null) { latest.current.onStationSelect(id); }
   const selected = items.find((a) => a.project.id === focusId);
   const chosenStation = stations.find((s) => s.id === stationId);
+  const chosenRainPeriod = initialRainPeriod(chosenStation ? { ...chosenStation, fresh: isFresh(chosenStation.observedAt) } : undefined);
   const [showAllLinked, setShowAllLinked] = useState(false);
   useEffect(() => {
     setShowAllLinked(false);
+    if (stationId) setTour(false);
   }, [stationId]);
   const linkedProjects = chosenStation
     ? items.filter((a) => a.trigger?.id === chosenStation.id)
@@ -122,14 +136,12 @@ export default function FloodMap({
   const stops = useMemo(() => tourProjects(items), [items]);
   const stopIds = stops.map((a) => a.project.id).join("|");
 
-  const [handledFocusRequest, setHandledFocusRequest] = useState(manualFocusRequest);
-  if (handledFocusRequest !== manualFocusRequest) {
-    setHandledFocusRequest(manualFocusRequest);
+  useEffect(() => {
     setTour(false);
     setStationId(null);
     setListOpen(false);
     setLayersOpen(false);
-  }
+  }, [manualFocusRequest]);
 
   useEffect(() => {
     let disposed = false;
@@ -140,10 +152,15 @@ export default function FloodMap({
       .then(([ml, visual]) => {
         if (disposed || !host.current) return;
         ml.setWorkerUrl("/vendor/maplibre/maplibre-gl-worker.mjs");
+        const initial3d = host.current.clientWidth > 720 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        setCity(initial3d);
         const m = new ml.Map({
           container: host.current,
           style: cityStyle,
           ...initialCamera,
+          pitch: initial3d ? initialCamera.pitch : 0,
+          bearing: initial3d ? initialCamera.bearing : 0,
+          cooperativeGestures: true,
           maxPitch: 70,
           minZoom: 4.5,
           maxZoom: 18,
@@ -169,7 +186,7 @@ export default function FloodMap({
             type: "line",
             source: "station-link",
             paint: {
-              "line-color": "#a2474b",
+              "line-color": "#1769e0",
               "line-width": 2,
               "line-dasharray": [2, 3],
               "line-opacity": 0.7,
@@ -211,6 +228,13 @@ export default function FloodMap({
               ],
               "circle-opacity": 0.13,
             },
+          });
+          m.addLayer({
+            id: "project-selection",
+            type: "circle",
+            source: "ap-projects",
+            filter: ["==", ["get", "id"], ""],
+            paint: { "circle-radius": 14, "circle-color": "transparent", "circle-stroke-color": "#1769e0", "circle-stroke-width": 3 },
           });
           m.addLayer({
             id: "project-dots",
@@ -339,6 +363,12 @@ export default function FloodMap({
               });
               popup.setDOMContent(panel).addTo(m);
             } else setStationId(String(hits[0].properties.id));
+          } else if (m.getLayer("province-areas") && m.getLayoutProperty("province-areas", "visibility") !== "none") {
+            const area = m.queryRenderedFeatures(e.point, { layers: ["province-areas"] })[0];
+            if (typeof area?.properties.ADM1_TH === "string") {
+              setTour(false);
+              latest.current.onProvinceSelect(area.properties.ADM1_TH);
+            }
           }
         });
         m.on("mousemove", (e) => {
@@ -358,6 +388,8 @@ export default function FloodMap({
         m.on("zoomstart", (e) => {
           if (e.originalEvent) setTour(false);
         });
+        m.on("rotatestart", (e) => { if (e.originalEvent) setTour(false); });
+        m.on("pitchstart", (e) => { if (e.originalEvent) setTour(false); });
         observer = new ResizeObserver(() => m.resize());
         observer.observe(host.current);
       })
@@ -439,16 +471,41 @@ export default function FloodMap({
     );
   }, [items, stations, ready, water, rain, focusId, stationId]);
   useEffect(() => {
-    beacons.current?.setAnimated(animated && !reducedMotion);
-  }, [animated, reducedMotion, ready]);
+    beacons.current?.setAnimated(city && animated && !reducedMotion);
+    beacons.current?.setVisible(city);
+  }, [city, animated, reducedMotion, ready]);
   useEffect(() => {
     if (ready && sceneReady.current)
       map.current?.setLayoutProperty(
         "city-buildings",
         "visibility",
-        buildings ? "visible" : "none",
+        buildings && city ? "visible" : "none",
       );
-  }, [ready, buildings]);
+  }, [ready, buildings, city]);
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m || !sceneReady.current) return;
+    if (boundaries && !m.getSource("thai-provinces")) {
+      m.addSource("thai-provinces", { type: "geojson", data: "/gis/thailand-provinces.geojson", attribution: '<a href="https://github.com/prasertcbs/thailand_gis">RTSD / OCHA / HDX · prasertcbs</a> · <a href="https://creativecommons.org/licenses/by/3.0/igo/">CC BY-IGO 3.0 · adapted</a>' });
+      m.addLayer({ id: "province-areas", type: "fill", source: "thai-provinces", paint: { "fill-color": "#1769e0", "fill-opacity": 0.015 } }, "station-connection");
+      m.addLayer({ id: "province-boundaries", type: "line", source: "thai-provinces", paint: { "line-color": "#54748f", "line-width": 1.5, "line-dasharray": [3, 2] } }, "station-connection");
+      m.addLayer({ id: "province-selected", type: "line", source: "thai-provinces", filter: ["==", ["get", "ADM1_TH"], province], paint: { "line-color": "#1769e0", "line-width": 3 } }, "station-connection");
+    }
+    if (m.getSource("thai-provinces")) {
+      for (const layer of ["province-areas", "province-boundaries", "province-selected"]) m.setLayoutProperty(layer, "visibility", boundaries ? "visible" : "none");
+      m.setFilter("province-selected", ["==", ["get", "ADM1_TH"], province]);
+    }
+  }, [boundaries, province, ready]);
+  const framedProvince = useRef("all");
+  useEffect(() => {
+    if (!ready || !map.current || !boundaries || framedProvince.current === province) return;
+    framedProvince.current = province;
+    const area = provinceIndex.find(p => p.name === province);
+    if (!area) return;
+    setTour(false);
+    map.current.fitBounds([[area.bbox[0], area.bbox[1]], [area.bbox[2], area.bbox[3]]], { padding: cameraPadding(false), pitch: 0, maxZoom: 11, duration: reducedMotion ? 0 : 1100 });
+    setCity(false);
+  }, [province, boundaries, ready]);
   const fitted = useRef("");
   useEffect(() => {
     if (!ready || !map.current || !sceneReady.current) return;
@@ -460,7 +517,7 @@ export default function FloodMap({
     fitted.current = ids;
     setTour(false);
     setStationId(null);
-    if (items.length && items.length < 350) fitItems();
+    if (items.length && items.length < 350 && !(boundaries && province !== "all")) fitItems();
   }, [items, ready]);
   useEffect(() => {
     if (!ready || !map.current || !selected || !sceneReady.current) return;
@@ -473,12 +530,7 @@ export default function FloodMap({
       pitch: city ? 58 : 0,
       bearing: city ? -28 : 0,
       duration: reducedMotion ? 0 : 1700,
-      padding: {
-        top: 0,
-        bottom: window.innerWidth <= 760 ? 300 : 0,
-        left: 0,
-        right: window.innerWidth > 760 ? 250 : 0,
-      },
+      padding: cameraPadding(),
     });
   }, [focusId, ready, manualFocusRequest]);
   useEffect(() => {
@@ -509,6 +561,7 @@ export default function FloodMap({
           : [],
     };
     (map.current.getSource("station-link") as GeoJSONSource).setData(data);
+    map.current.setFilter("project-selection", ["==", ["get", "id"], focusId ?? ""]);
     map.current.setFilter("station-labels", [
       "in",
       ["get", "id"],
@@ -543,12 +596,18 @@ export default function FloodMap({
         [Math.max(...xs), Math.max(...ys)],
       ],
       {
-        padding: window.innerWidth <= 760 ? 45 : 90,
+        padding: cameraPadding(false),
         maxZoom: 14,
         pitch: city ? 45 : 0,
         duration: reducedMotion ? 0 : 1400,
       },
     );
+  }
+  function cameraPadding(withInspector = true) {
+    const width = host.current?.clientWidth ?? 800;
+    const height = host.current?.clientHeight ?? 600;
+    const panel = host.current?.parentElement?.querySelector<HTMLElement>(".city-inspector");
+    return mapPadding(width, height, withInspector && window.innerWidth > 1100 ? panel?.offsetWidth ?? 310 : 0);
   }
   function viewCity(next: boolean) {
     setCity(next);
@@ -573,7 +632,7 @@ export default function FloodMap({
     const sources = [
       selected.trigger,
       representativeWater(selected),
-      selected.rain.find((s) => s.fresh && s.value !== null),
+      representativeRain(selected),
     ].filter((s) => !!s);
     const coords = [[p.lng, p.lat], ...sources.map((s) => [s.lng, s.lat])];
     const xs = coords.map((c) => c[0]),
@@ -584,12 +643,9 @@ export default function FloodMap({
         [Math.max(...xs), Math.max(...ys)],
       ],
       {
-        padding:
-          window.innerWidth > 760
-            ? { top: 80, bottom: 170, left: 100, right: 350 }
-            : { top: 100, bottom: 300, left: 36, right: 36 },
+        padding: cameraPadding(),
         maxZoom: 14.2,
-        pitch: 45,
+        pitch: city ? 45 : 0,
         duration: reducedMotion ? 0 : 1300,
       },
     );
@@ -598,9 +654,11 @@ export default function FloodMap({
   }
   const station = selected ? representativeWater(selected) : undefined,
     margin = bankMargin(station);
-  const activeRain = selected?.rain.find((s) => s.fresh && s.value !== null);
+  const activeRain = selected ? representativeRain(selected) : undefined;
+  const rainPeriod = initialRainPeriod(activeRain);
+  const rainValue = activeRain?.fresh ? (rainPeriod === "1h" ? activeRain.rain1h : activeRain.value) : null;
   return (
-    <div className={`city-frame ${expanded ? "city-expanded" : ""}`}>
+    <div className={`city-frame ${expanded ? "city-expanded" : ""} ${city ? "is-3d" : "is-2d"}`}>
       <div
         ref={host}
         className="city-canvas"
@@ -609,7 +667,7 @@ export default function FloodMap({
       <div className="city-atmosphere" />
       <div className="city-title">
         <span className="city-kicker">
-          <i /> AP WATER ATLAS <span> / 3D</span>
+          <i /> WATER ATLAS <span> / {city ? "3D" : "2D"}</span>
         </span>
         <h2>โครงการและสถานี</h2>
         <p>
@@ -662,11 +720,22 @@ export default function FloodMap({
       {layersOpen && (
         <div className="city-layers glass-panel">
           <b>เลือกสิ่งที่อยากเห็น</b>
+          <label><MapPin size={17} />ขอบเขตจังหวัด<Switch checked={boundaries} onCheckedChange={setBoundaries} aria-label="ขอบเขตจังหวัด" /></label>
+          {boundaries && <div className="province-explorer">
+            <label htmlFor="province-explorer">สำรวจจังหวัด</label>
+            <select id="province-explorer" value={province} onChange={event => onProvinceSelect(event.target.value)}>
+              <option value="all">ทุกจังหวัด</option>
+              {provinceIndex.map(area => <option key={area.id} value={area.name}>{area.name}</option>)}
+            </select>
+            <p>คลิกพื้นที่หรือเลือกจังหวัดเพื่อกรองโครงการ · ขอบเขตการปกครอง ไม่ใช่พื้นที่น้ำท่วม</p>
+            <a href="/gis/thailand-provinces.provenance.json" target="_blank" rel="noreferrer">ข้อมูลอ้างอิงปี 2565 · ที่มาและการแปลง</a>
+          </div>}
           <label>
             <Building2 size={17} />
             อาคาร 3 มิติ
             <Switch
               checked={buildings}
+              disabled={!city}
               onCheckedChange={setBuildings}
               aria-label="อาคาร 3 มิติ"
             />
@@ -693,8 +762,8 @@ export default function FloodMap({
             <Eye size={17} />
             ภาพเคลื่อนไหว
             <Switch
-              checked={animated && !reducedMotion}
-              disabled={reducedMotion}
+              checked={city && animated && !reducedMotion}
+              disabled={reducedMotion || !city}
               onCheckedChange={setAnimated}
               aria-label="ภาพเคลื่อนไหว"
             />
@@ -728,6 +797,7 @@ export default function FloodMap({
                     setTour(false);
                   }}
                   className="city-project"
+                  aria-pressed={focusId === a.project.id}
                 >
                   <i style={{ background: RISK_COLOR[a.risk] }} />
                   <span>
@@ -798,17 +868,18 @@ export default function FloodMap({
             setTour(false);
             map.current?.flyTo({
               ...initialCamera,
+              pitch: city ? initialCamera.pitch : 0,
+              bearing: city ? initialCamera.bearing : 0,
               duration: reducedMotion ? 0 : 1700,
               padding: { top: 0, bottom: 0, left: 0, right: 0 },
             });
-            setCity(true);
           }}
         >
           <RotateCcw size={17} />
         </button>
       </div>
       {(selected || chosenStation) && !listOpen && !layersOpen && (
-        <div className="city-inspector glass-panel">
+        <div className="city-inspector glass-panel" aria-label={chosenStation ? "สถานีที่เลือก" : "โครงการที่เลือก"}>
           {chosenStation ? (
             <>
               <span className="city-card-eyebrow">
@@ -826,14 +897,16 @@ export default function FloodMap({
               <span className={`risk-label ${stationRisk(chosenStation)}`}>
                 {RISK_LABEL[stationRisk(chosenStation)]}
               </span>
-              <div className="station-large-value">
-                {chosenStation.value?.toFixed(2) ?? "—"}
+              <span className={`data-state ${isFresh(chosenStation.observedAt) ? "" : "is-stale"}`}>{isFresh(chosenStation.observedAt) ? "ข้อมูลอยู่ในช่วงที่ใช้คัดกรอง" : "ข้อมูลล่าช้า · ไม่ใช้คัดกรอง"}</span>
+              <div className={`station-large-value ${!isFresh(chosenStation.observedAt) ? "data-stale" : ""}`}>
+                {(chosenStation.kind === "rain" && chosenRainPeriod === "1h" ? chosenStation.rain1h : chosenStation.value)?.toFixed(2) ?? "—"}
                 <small>
-                  {chosenStation.kind === "water" ? "ม.รทก." : "มม. / 24 ชม."}
+                  {chosenStation.kind === "water" ? "ม.รทก." : `มม. / ${chosenRainPeriod === "1h" ? "1" : "24"} ชม.`}
                 </small>
               </div>
+              {chosenStation.kind === "water" && <WaterLevelGauge station={{...chosenStation, fresh: isFresh(chosenStation.observedAt)}} />}
               {chosenStation.kind === "rain" && (
-                <p>ฝน 1 ชม. {chosenStation.rain1h?.toFixed(1) ?? "—"} มม.</p>
+                <p>ฝน {chosenRainPeriod === "1h" ? "24" : "1"} ชม. {(chosenRainPeriod === "1h" ? chosenStation.value : chosenStation.rain1h)?.toFixed(1) ?? "—"} มม.</p>
               )}
               <p>
                 {isFresh(chosenStation.observedAt)
@@ -875,7 +948,7 @@ export default function FloodMap({
             selected && (
               <>
                 <span className="city-card-eyebrow">
-                  AT THIS PROJECT
+                  กำลังเลือกโครงการ
                   <button
                     aria-label="ปิดข้อมูลโครงการบนแผนที่"
                     onClick={() => {
@@ -909,13 +982,15 @@ export default function FloodMap({
                   </div>
                   <div>
                     <CloudRain size={16} />
-                    <span>ฝนสะสม 24 ชม.</span>
+                    <span>ฝนสะสม {rainPeriod === "1h" ? "1" : "24"} ชม.</span>
                     <b>
-                      {activeRain?.value?.toFixed(1) ?? "—"}
+                      {rainValue?.toFixed(1) ?? "—"}
                       <small>มม.</small>
                     </b>
                   </div>
                 </div>
+                {station && <button className="reading-source" onClick={() => { setTour(false); setStationId(station.id); }}>น้ำ: {station.name} · {clock(station.observedAt)}</button>}
+                {activeRain && <button className="reading-source" onClick={() => { setTour(false); setRain(true); setStationId(activeRain.id); }}>ฝน: {activeRain.name} · {clock(activeRain.observedAt)}</button>}
                 <small className="city-reading-note">
                   ค่าจากสถานีใกล้เคียง ไม่ใช่น้ำในโครงการ
                 </small>
@@ -966,7 +1041,7 @@ export default function FloodMap({
           onClick={() => viewCity(true)}
         >
           <Building2 size={17} />
-          มุมเมือง
+          เมือง 3D
         </button>
         <button
           aria-pressed={!city}
@@ -974,17 +1049,19 @@ export default function FloodMap({
           onClick={() => viewCity(false)}
         >
           <ScanLine size={17} />
-          มองจากบน
+          แผนที่ 2D
         </button>
         <button
           aria-label="แสดงทุกโครงการบนแผนที่"
           onClick={() => {
             setTour(false);
+            onFocus(null);
+            setStationId(null);
             fitItems();
           }}
         >
           <Globe2 size={17} />
-          <span>ทุกโครงการ</span>
+          <span>ภาพรวม</span>
         </button>
         <i />
         <button

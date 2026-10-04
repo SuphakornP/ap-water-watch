@@ -11,7 +11,7 @@
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 16px;
-  border-bottom: 1px solid #dfe5db;
+  border-bottom: 1px solid #dce6ef;
 }
 
 .tabs {
@@ -28,28 +28,28 @@
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
-  color: #647568;
+  color: #4c6278;
   font-size: 16px;
 }
 
 .tabs button[aria-selected="true"] {
-  border-bottom-color: #396952;
-  color: #294e3e;
+  border-bottom-color: #1769e0;
+  color: #005fd6;
   font-weight: 500;
 }
 
 .tabs button > span {
   min-width: 19px;
   border-radius: 4px;
-  background: #edf0e8;
-  color: #52675b;
-  font-size: 12px;
+  background: #e7f1fc;
+  color: #415b73;
+  font-size: 13px;
   text-align: center;
 }
 
 .latestLabel {
-  color: #657468;
-  font-size: 12px;
+  color: #4c6278;
+  font-size: 13px;
 }
 
 .selection {
@@ -59,8 +59,8 @@
 }
 
 .selection label {
-  color: #5b6c60;
-  font-size: 12px;
+  color: #4c6278;
+  font-size: 13px;
 }
 
 .selection select {
@@ -68,16 +68,16 @@
   min-width: 0;
   min-height: 44px;
   padding: 9px 12px;
-  border: 1px solid #d5dfd3;
+  border: 1px solid #c3d8e9;
   border-radius: 6px;
-  background: #fafbf5;
-  color: #354f42;
+  background: #ffffff;
+  color: #142e49;
   font-size: 14px;
 }
 
 .selection select:disabled {
   opacity: 1;
-  color: #6a766e;
+  color: #586b82;
 }
 
 .periods {
@@ -89,16 +89,16 @@
 .periods button {
   min-height: 40px;
   padding: 7px 14px;
-  border: 1px solid #dce3d7;
+  border: 1px solid #cbdce9;
   border-radius: 5px;
-  background: #f8faf3;
-  color: #536859;
+  background: #ffffff;
+  color: #4c6278;
   font-size: 13px;
 }
 
 .periods button[aria-pressed="true"] {
-  border-color: #3c6855;
-  background: #3c6855;
+  border-color: #005fd6;
+  background: #005fd6;
   color: #fff;
 }
 
@@ -110,14 +110,14 @@
 }
 
 .readout > span {
-  color: #5b716b;
+  color: #4c6278;
   font-size: 13px;
 }
 
 .readout > strong {
   display: block;
   margin: 5px 0;
-  color: #376e91;
+  color: #007fb5;
   font-size: clamp(32px, 7cqi, 46px);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -129,15 +129,15 @@
   font-size: 13px;
   font-weight: 400;
   letter-spacing: 0;
-  color: #61756e;
+  color: #4c6278;
 }
 
 .readout > strong.warningValue {
-  color: #ac4945;
+  color: #d6293e;
 }
 
 .readout > b {
-  color: #3f6151;
+  color: #142e49;
   font-size: 15px;
   font-weight: 500;
 }
@@ -145,8 +145,8 @@
 .readout > p {
   max-width: 23ch;
   margin: 7px 0 0;
-  color: #617267;
-  font-size: 12px;
+  color: #4c6278;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -155,9 +155,9 @@
   gap: 3px;
   margin: 12px 0 0;
   padding-top: 10px;
-  border-top: 1px solid #dfe5db;
-  color: #5b7166;
-  font-size: 12px;
+  border-top: 1px solid #dce6ef;
+  color: #4c6278;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
   line-height: 1.6;
 }
@@ -170,7 +170,7 @@
 
 .referenceLevels dd {
   margin: 0;
-  color: #3f6151;
+  color: #142e49;
   white-space: nowrap;
 }
 
@@ -178,22 +178,22 @@
   min-width: 0;
   margin: 0;
   padding: 14px;
-  border: 1px solid #e1e5d9;
+  border: 1px solid #d5e5f1;
   border-radius: 8px;
-  background: #f6f7ee;
+  background: #edf8ff;
 }
 
 .rainFigure figcaption {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  color: #4f625a;
-  font-size: 12px;
+  color: #314e68;
+  font-size: 13px;
   font-weight: 500;
 }
 
 .rainFigure figcaption > span {
-  color: #66776f;
+  color: #4c6278;
   font-weight: 400;
 }
 
@@ -207,8 +207,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 5px 13px;
-  color: #5b6c60;
-  font-size: 12px;
+  color: #4c6278;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -226,11 +226,11 @@
 }
 
 .watchMarker {
-  color: #a47217;
+  color: #a65e00;
 }
 
 .priorityMarker {
-  color: #ac4945;
+  color: #d6293e;
 }
 
 .emptyRain {
@@ -240,10 +240,10 @@
   justify-content: center;
   gap: 6px;
   padding: 20px;
-  border: 1px solid #e1e5d9;
+  border: 1px solid #d5e5f1;
   border-radius: 8px;
-  background: #f3f4ef;
-  color: #596961;
+  background: #edf1f6;
+  color: #4c6278;
 }
 
 .emptyRain > strong {
@@ -262,8 +262,8 @@
   align-items: baseline;
   gap: 4px 12px;
   margin-top: 17px;
-  color: #5c6f61;
-  font-size: 12px;
+  color: #4c6278;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -273,21 +273,21 @@
 }
 
 .stationMeta b {
-  color: #3e5948;
+  color: #142e49;
   font-size: 13px;
   font-weight: 500;
 }
 
 .stationMeta .triggerLabel {
-  color: #875431;
+  color: #005fd6;
 }
 
 .measurementNote {
   margin: 12px 0 0;
   padding-top: 11px;
-  border-top: 1px solid #e0e6da;
-  color: #627568;
-  font-size: 12px;
+  border-top: 1px solid #dce6ef;
+  color: #4c6278;
+  font-size: 13px;
   line-height: 1.65;
 }
 
@@ -325,3 +325,8 @@
     grid-column: 1 / -1;
   }
 }
+
+.evidenceStatus { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 16px; }
+.evidenceStatus small { flex-basis: 100%; color: #4c6278; font-size: 13px; line-height: 1.6; }
+.sceneSection { margin-top: 18px; padding-top: 16px; border-top: 1px solid #dce6ef; }
+.periods button { min-height: 44px; font-size: 14px; }

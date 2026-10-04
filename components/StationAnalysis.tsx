@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { lazy, Suspense, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
   Bar,
   BarChart,
@@ -10,28 +10,14 @@ import {
   YAxis,
 } from "recharts";
 import { bankMargin, representativeWater } from "@/lib/assessment";
-import type { Assessment, NearbyStation } from "@/lib/flood-types";
+import { RISK_COLOR, RISK_LABEL, type Assessment, type NearbyStation } from "@/lib/flood-types";
+import { stationRisk } from "@/lib/map-signals";
+import { initialRainPeriod, representativeRain, RAIN_THRESHOLDS, type RainPeriod } from "@/lib/presentation";
 import WaterLevelGauge from "./WaterLevelGauge";
 import styles from "./StationAnalysis.module.css";
 
 type StationKind = "water" | "rain";
-type RainPeriod = "1h" | "24h";
-
-// These are the same AP screening thresholds used in assessProject.
-const RAIN_THRESHOLDS = {
-  "1h": { watch: 25.1, priority: 50.1, label: "1 ชั่วโมง" },
-  "24h": { watch: 35.1, priority: 90.1, label: "24 ชั่วโมง" },
-};
-
-function initialRainPeriod(station: NearbyStation | undefined): RainPeriod {
-  if (!station?.fresh) return "1h";
-  const score = (value: number | null, period: RainPeriod) => {
-    if (value === null || !Number.isFinite(value) || value < 0) return -1;
-    const thresholds = RAIN_THRESHOLDS[period];
-    return value >= thresholds.priority ? 2 : value >= thresholds.watch ? 1 : 0;
-  };
-  return score(station.value, "24h") > score(station.rain1h, "1h") ? "24h" : "1h";
-}
+const WaterScene = lazy(() => import("./StationCrossSection"));
 
 const dateFormat = new Intl.DateTimeFormat("th-TH", {
   timeZone: "Asia/Bangkok",
@@ -81,10 +67,10 @@ function RainReading({
 
   const color =
     reading >= thresholds.priority
-      ? "#ac4945"
+      ? RISK_COLOR.priority
       : reading >= thresholds.watch
-        ? "#a47217"
-        : "#376e91";
+        ? RISK_COLOR.watch
+        : "#007fb5";
   const maximum = Math.ceil(Math.max(thresholds.priority * 1.2, reading * 1.15) / 10) * 10;
 
   return (
@@ -113,8 +99,8 @@ function RainReading({
               />
               <YAxis type="category" dataKey="name" hide />
               <Bar dataKey="value" fill={color} barSize={28} isAnimationActive={false} />
-              <ReferenceLine x={thresholds.watch} stroke="#a47217" strokeDasharray="4 4" />
-              <ReferenceLine x={thresholds.priority} stroke="#ac4945" strokeDasharray="4 4" />
+              <ReferenceLine x={thresholds.watch} stroke={RISK_COLOR.watch} strokeDasharray="4 4" />
+              <ReferenceLine x={thresholds.priority} stroke={RISK_COLOR.priority} strokeDasharray="4 4" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -133,25 +119,27 @@ function RainReading({
   );
 }
 
-export default function StationAnalysis({ assessment }: { assessment: Assessment }) {
+export default function StationAnalysis({ assessment, stationId, onStationChange, reducedMotion = false }: { assessment: Assessment; stationId?: string | null; onStationChange?: (id: string | null) => void; reducedMotion?: boolean }) {
   const id = useId();
   const waterTab = useRef<HTMLButtonElement>(null);
   const rainTab = useRef<HTMLButtonElement>(null);
   const defaultWater = representativeWater(assessment);
-  const defaultRain =
-    (assessment.trigger?.kind === "rain" ? assessment.trigger : undefined) ??
-    assessment.rain[0];
-  const [kind, setKind] = useState<StationKind>(
+  const defaultRain = representativeRain(assessment);
+  const [localKind, setKind] = useState<StationKind>(
     assessment.trigger?.kind ?? (assessment.water.length ? "water" : "rain"),
   );
   const [waterId, setWaterId] = useState(defaultWater?.id ?? "");
   const [rainId, setRainId] = useState(defaultRain?.id ?? "");
-  const [period, setPeriod] = useState<RainPeriod>(() => initialRainPeriod(defaultRain));
+  const [periodChoice, setPeriodChoice] = useState<{ stationId: string | undefined; value: RainPeriod }>(() => ({ stationId: defaultRain?.id, value: initialRainPeriod(defaultRain) }));
+  const [sceneOpen, setSceneOpen] = useState(false);
+  const externalStation = [...assessment.water, ...assessment.rain].find(s => s.id === stationId);
+  const kind = externalStation?.kind ?? localKind;
   const stations = kind === "water" ? assessment.water : assessment.rain;
   const selectedId = kind === "water" ? waterId : rainId;
   const station =
-    stations.find((candidate) => candidate.id === selectedId) ??
+    externalStation ?? stations.find((candidate) => candidate.id === selectedId) ??
     (kind === "water" ? defaultWater : defaultRain);
+  const period = periodChoice.stationId === station?.id ? periodChoice.value : initialRainPeriod(station);
   const rawMargin = bankMargin(station);
   const margin = rawMargin !== null && Number.isFinite(rawMargin) ? rawMargin : null;
   const referenceWater =
@@ -164,6 +152,12 @@ export default function StationAnalysis({ assessment }: { assessment: Assessment
       : null;
   const triggering =
     station && assessment.trigger?.id === station.id && assessment.trigger.kind === kind;
+  function chooseKind(next: StationKind) {
+    setKind(next);
+    const rememberedId = next === "water" ? waterId : rainId;
+    const candidate = assessment[next].find(item => item.id === rememberedId) ?? (next === "water" ? defaultWater : defaultRain);
+    onStationChange?.(candidate?.id ?? null);
+  }
 
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     let next: StationKind;
@@ -177,7 +171,7 @@ export default function StationAnalysis({ assessment }: { assessment: Assessment
       return;
     }
     event.preventDefault();
-    setKind(next);
+    chooseKind(next);
     (next === "water" ? waterTab : rainTab).current?.focus();
   }
 
@@ -195,7 +189,7 @@ export default function StationAnalysis({ assessment }: { assessment: Assessment
               aria-controls={`${id}-panel`}
               aria-selected={kind === value}
               tabIndex={kind === value ? 0 : -1}
-              onClick={() => setKind(value)}
+              onClick={() => chooseKind(value)}
               onKeyDown={onTabKeyDown}
             >
               {value === "water" ? "ระดับน้ำ" : "ฝน"}
@@ -212,9 +206,10 @@ export default function StationAnalysis({ assessment }: { assessment: Assessment
             id={`${id}-station`}
             value={station?.id ?? ""}
             disabled={!stations.length}
-            onChange={(event) =>
-              (kind === "water" ? setWaterId : setRainId)(event.target.value)
-            }
+            onChange={(event) => {
+              (kind === "water" ? setWaterId : setRainId)(event.target.value);
+              onStationChange?.(event.target.value);
+            }}
           >
             {!stations.length && <option value="">ไม่มีสถานีในรัศมีที่เลือก</option>}
             {stations.map((item) => (
@@ -228,6 +223,11 @@ export default function StationAnalysis({ assessment }: { assessment: Assessment
             ))}
           </select>
         </div>
+        {station && <div className={styles.evidenceStatus}>
+          <span className={`risk-label ${station.fresh ? stationRisk(station) : "unknown"}`}>สถานี: {RISK_LABEL[station.fresh ? stationRisk(station) : "unknown"]}</span>
+          <span className={`data-state ${station.fresh ? "" : "is-stale"}`}>{station.fresh ? `วัด ${stationTime(station)}` : "ข้อมูลล่าช้า · ไม่ใช้คัดกรอง"}</span>
+          {!triggering && <small>กำลังดูสถานีประกอบ · ระดับโครงการยังใช้สัญญาณสูงสุด</small>}
+        </div>}
         {kind === "rain" && (
           <div className={styles.periods} role="group" aria-label="ช่วงเวลาสะสมฝน">
             {(["1h", "24h"] as const).map((value) => (
@@ -235,7 +235,7 @@ export default function StationAnalysis({ assessment }: { assessment: Assessment
                 key={value}
                 type="button"
                 aria-pressed={period === value}
-                onClick={() => setPeriod(value)}
+                onClick={() => setPeriodChoice({ stationId: station?.id, value })}
               >
                 {RAIN_THRESHOLDS[value].label}
               </button>
@@ -275,6 +275,10 @@ export default function StationAnalysis({ assessment }: { assessment: Assessment
         ) : (
           <RainReading station={station} period={period} />
         )}
+        {kind === "water" && margin !== null && <div className={styles.sceneSection}>
+          <button className="button-outline" aria-expanded={sceneOpen} onClick={() => setSceneOpen(!sceneOpen)}>{sceneOpen ? "ปิดภาพอธิบาย 3D" : "สำรวจภาพระดับน้ำ 3D"}</button>
+          {sceneOpen && <Suspense fallback={<p role="status">กำลังเปิดภาพระดับน้ำ</p>}><WaterScene margin={margin} reducedMotion={reducedMotion} /></Suspense>}
+        </div>}
         {station && (
           <div className={styles.stationMeta}>
             <p><b>{station.name}</b> · ห่าง {station.distance.toFixed(1)} กม.</p>

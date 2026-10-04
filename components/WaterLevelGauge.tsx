@@ -14,7 +14,7 @@ import type { NearbyStation } from "@/lib/flood-types";
 import styles from "./WaterLevelGauge.module.css";
 
 interface WaterLevelGaugeProps {
-  station: NearbyStation | undefined;
+  station: Omit<NearbyStation, "distance"> | undefined;
 }
 
 export default function WaterLevelGauge({ station }: WaterLevelGaugeProps) {
@@ -48,7 +48,7 @@ export default function WaterLevelGauge({ station }: WaterLevelGaugeProps) {
   const magnitude = Math.abs(level);
   const extent = Math.max(1, Math.ceil(magnitude + Math.min(magnitude / 4, 1)));
   const overflow = level > 0;
-  const waterColor = overflow ? "#ac4945" : "#376e91";
+  const waterColor = "#007fb5";
   const signedValue = `${level > 0 ? "+" : ""}${level.toFixed(2)}`;
   const description =
     level === 0
@@ -120,7 +120,7 @@ export default function WaterLevelGauge({ station }: WaterLevelGaugeProps) {
                 position:
                   level >= 0 ? "insideBottomLeft" : "insideTopLeft",
                 offset: 8,
-                fill: waterColor,
+                fill: overflow ? "#d6293e" : waterColor,
                 fontSize: 13,
                 fontWeight: 500,
               }}

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { representativeRain, initialRainPeriod, mapPadding } from "../lib/presentation.ts";
 import {
   assessProject,
   bankMargin,
@@ -51,6 +52,30 @@ const rain = {
   status: null,
 };
 const assess = (stations) => assessProject(project, stations, 10, now);
+test("rain evidence keeps the actual hourly trigger even when a nearer station is quiet", () => {
+  const burst = { ...rain, id: "burst", lat: 13.84, value: 2, rain1h: 60 };
+  const result = assess([station, rain, burst]);
+  const evidence = representativeRain(result);
+  assert.equal(result.risk, "priority");
+  assert.equal(evidence.id, "burst");
+  assert.equal(initialRainPeriod(evidence), "1h");
+  assert.equal(initialRainPeriod({ ...evidence, value: 100, rain1h: 0 }), "24h");
+  assert.equal(initialRainPeriod({ ...evidence, value: 100, fresh: false }), "1h");
+});
+test("rain evidence accepts hourly-only observations and keeps stale data explicit", () => {
+  const result = assess([station, { ...rain, value: null, rain1h: 60 }]);
+  assert.equal(representativeRain(result).rain1h, 60);
+  assert.equal(representativeRain(assess([])), undefined);
+  assert.equal(representativeRain(assess([{ ...rain, observedAt: "2026-10-02T00:00:00Z" }])).fresh, false);
+});
+test("camera padding leaves visible space beside desktop inspector and in compact maps", () => {
+  const desktop = mapPadding(1024, 680, 310);
+  assert.ok(desktop.right >= 310);
+  assert.ok(1024 - desktop.left - desktop.right > 500);
+  const mobile = mapPadding(360, 530);
+  assert.equal(mobile.left, mobile.right);
+  assert.ok(530 - mobile.top - mobile.bottom > 250);
+});
 test("missing data never becomes an all-clear", () => {
   assert.equal(assess([]).risk, "unknown");
   assert.equal(assess([station]).risk, "unknown");

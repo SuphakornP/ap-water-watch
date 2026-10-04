@@ -14,7 +14,7 @@ export const cityStyle: StyleSpecification = {
   },
   light: {
     anchor: "viewport",
-    color: "#fff8e6",
+    color: "#ffffff",
     intensity: 0.45,
     position: [1.4, 205, 38],
   },
@@ -22,28 +22,28 @@ export const cityStyle: StyleSpecification = {
     {
       id: "land",
       type: "background",
-      paint: { "background-color": "#e7eade" },
+      paint: { "background-color": "#eaf1f5" },
     },
     {
       id: "landuse",
       type: "fill",
       source: "city",
       "source-layer": "landuse",
-      paint: { "fill-color": "#dce4d4", "fill-opacity": 0.65 },
+      paint: { "fill-color": "#e5f0eb", "fill-opacity": 0.65 },
     },
     {
       id: "parks",
       type: "fill",
       source: "city",
       "source-layer": "park",
-      paint: { "fill-color": "#c2d4bf", "fill-opacity": 0.8 },
+      paint: { "fill-color": "#cde7d8", "fill-opacity": 0.8 },
     },
     {
       id: "water",
       type: "fill",
       source: "city",
       "source-layer": "water",
-      paint: { "fill-color": "#4995af", "fill-antialias": true },
+      paint: { "fill-color": "#2ba7d5", "fill-antialias": true },
     },
     {
       id: "water-edge",
@@ -51,7 +51,7 @@ export const cityStyle: StyleSpecification = {
       source: "city",
       "source-layer": "water",
       paint: {
-        "line-color": "#287790",
+        "line-color": "#007cae",
         "line-width": 1.2,
         "line-opacity": 0.6,
       },
@@ -62,7 +62,7 @@ export const cityStyle: StyleSpecification = {
       source: "city",
       "source-layer": "waterway",
       paint: {
-        "line-color": "#509db4",
+        "line-color": "#23a4d0",
         "line-width": ["interpolate", ["linear"], ["zoom"], 9, 0.5, 15, 3],
       },
     },
@@ -73,7 +73,7 @@ export const cityStyle: StyleSpecification = {
       "source-layer": "transportation",
       minzoom: 10,
       paint: {
-        "line-color": "#c7cfbe",
+        "line-color": "#c8d8e3",
         "line-width": [
           "interpolate",
           ["linear"],
@@ -93,7 +93,7 @@ export const cityStyle: StyleSpecification = {
       source: "city",
       "source-layer": "transportation",
       paint: {
-        "line-color": "#faf9f2",
+        "line-color": "#ffffff",
         "line-width": [
           "interpolate",
           ["linear"],
@@ -115,7 +115,7 @@ export const cityStyle: StyleSpecification = {
       source: "city",
       "source-layer": "building",
       minzoom: 12,
-      paint: { "fill-color": "#ced3c4", "fill-outline-color": "#b8c4b6" },
+      paint: { "fill-color": "#d3e0e9", "fill-outline-color": "#c0d3df" },
     },
     {
       id: "city-buildings",
@@ -124,7 +124,7 @@ export const cityStyle: StyleSpecification = {
       "source-layer": "building",
       minzoom: 12,
       paint: {
-        "fill-extrusion-color": "#f5f2e7",
+        "fill-extrusion-color": "#f7fbff",
         "fill-extrusion-height": ["coalesce", ["get", "render_height"], 8],
         "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
         "fill-extrusion-opacity": 0.93,
@@ -145,8 +145,8 @@ export const cityStyle: StyleSpecification = {
         "text-letter-spacing": 0.02,
       },
       paint: {
-        "text-color": "#216983",
-        "text-halo-color": "#f3f4e8",
+        "text-color": "#005f88",
+        "text-halo-color": "#ffffff",
         "text-halo-width": 2,
       },
     },
@@ -163,8 +163,8 @@ export const cityStyle: StyleSpecification = {
         "text-padding": 24,
       },
       paint: {
-        "text-color": "#64786e",
-        "text-halo-color": "#f3f4e8",
+        "text-color": "#435c73",
+        "text-halo-color": "#ffffff",
         "text-halo-width": 2,
       },
     },

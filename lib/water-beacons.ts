@@ -19,6 +19,7 @@ export function createWaterBeacons(map: MapLibreMap): {
   layer: CustomLayerInterface;
   update(points: BeaconPoint[], selectedId?: string): void;
   setAnimated(enabled: boolean): void;
+  setVisible(visible: boolean): void;
 } {
   const MAX = 250;
   const origin = MercatorCoordinate.fromLngLat([100.5, 13.75]);
@@ -38,6 +39,7 @@ export function createWaterBeacons(map: MapLibreMap): {
     selectedId: string | undefined;
   let renderer: THREE.WebGLRenderer | undefined;
   let ready = false,
+    visible = true,
     animated = !reduced.matches,
     phase = 0,
     lastFrame = 0;
@@ -59,10 +61,10 @@ export function createWaterBeacons(map: MapLibreMap): {
     rings: THREE.InstancedMesh,
     waves: THREE.InstancedMesh;
 
-  function instance(g: THREE.BufferGeometry, m: THREE.Material) {
+  function instance(g: THREE.BufferGeometry, m: THREE.Material, capacity = MAX) {
     geometry.push(g);
     materials.push(m);
-    const mesh = new THREE.InstancedMesh(g, m, MAX);
+    const mesh = new THREE.InstancedMesh(g, m, capacity);
     mesh.count = 0;
     mesh.frustumCulled = false; // Bounds are culled geographically before instancing.
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -148,9 +150,10 @@ export function createWaterBeacons(map: MapLibreMap): {
       const y = (origin.y - mercator.y) / metres;
       const selected = p.id === selectedId;
       const r = radius * (selected ? 1.3 : 1);
-      const tint = p.severity === "unknown" ? "#879697" : p.color;
+      const tint = p.color;
       put(bases, x, y, r * 0.015, r * 0.8, r * 0.8, r * 0.1, "#f5f8f5");
       put(rings, x, y, r * 0.14, r, r, r, tint);
+      if (selected) put(rings, x, y, r * 0.15, r * 1.65, r * 1.65, r * 1.65, "#1769e0");
       if (p.kind === "water") {
         const h = r * 7.8;
         put(shells, x, y, r * 0.12, r * 0.51, r * 0.51, h, "#b5e4eb");
@@ -237,7 +240,7 @@ export function createWaterBeacons(map: MapLibreMap): {
         }),
       );
       rims = instance(new THREE.TorusGeometry(1, 0.045, 5, 24), flat(0.8));
-      rings = instance(new THREE.TorusGeometry(1, 0.065, 5, 24), flat());
+      rings = instance(new THREE.TorusGeometry(1, 0.065, 5, 24), flat(), MAX + 1);
       waves = instance(new THREE.TorusGeometry(1, 0.028, 4, 24), flat(0.35));
       ready = true;
       map.on("move", rebuild);
@@ -247,7 +250,7 @@ export function createWaterBeacons(map: MapLibreMap): {
       rebuild();
     },
     render(_gl, args) {
-      if (!renderer || !ready || document.hidden) return;
+      if (!renderer || !ready || !visible || document.hidden) return;
       const running = animated && pulses.length > 0;
       const now = performance.now();
       if (running) {
@@ -283,6 +286,7 @@ export function createWaterBeacons(map: MapLibreMap): {
   };
   return {
     layer,
+    setVisible(next) { visible = next; lastFrame = 0; repaint(); },
     update(next, nextSelectedId) {
       for (const p of next) {
         if (

@@ -2,10 +2,10 @@
   min-width: 0;
   margin: 0;
   padding: 14px 14px 10px;
-  border: 1px solid #e1e5d9;
+  border: 1px solid #d5e5f1;
   border-radius: 8px;
-  background: #f6f7ee;
-  font-family: "IBM Plex Sans Thai", Tahoma, sans-serif;
+  background: #edf8ff;
+  font-family: inherit;
 }
 
 .caption {
@@ -13,15 +13,15 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  color: #4f625a;
-  font-size: 12px;
+  color: #314e68;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.5;
 }
 
 .caption > span {
-  color: #66776f;
-  font-size: 12px;
+  color: #4c6278;
+  font-size: 13px;
   font-weight: 400;
   flex-shrink: 0;
 }
@@ -35,15 +35,15 @@
 
 .scaleNote {
   margin: 0;
-  color: #68756b;
-  font-size: 12px;
+  color: #4c6278;
+  font-size: 13px;
   line-height: 1.5;
   text-align: right;
 }
 
 .unavailable {
   min-height: 230px;
-  background: #f3f4ef;
+  background: #edf1f6;
 }
 
 .emptyState {
@@ -53,7 +53,7 @@
   justify-content: center;
   align-items: flex-start;
   gap: 7px;
-  color: #596961;
+  color: #4c6278;
 }
 
 .emptyState > span {
@@ -65,7 +65,7 @@
 .emptyState > p {
   max-width: 24ch;
   margin: 0;
-  color: #66756d;
+  color: #4c6278;
   font-size: 13px;
   line-height: 1.6;
 }

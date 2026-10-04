@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./water-watch.css";
 export const metadata: Metadata = {
   title: "AP Water Watch | เฝ้าระวังน้ำรอบโครงการ",
   description:

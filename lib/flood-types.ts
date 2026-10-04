@@ -69,10 +69,10 @@ export const RISK_LABEL: Record<Risk, string> = {
   unknown: "ข้อมูลไม่เพียงพอ",
 };
 export const RISK_COLOR: Record<Risk, string> = {
-  priority: "#df5653",
-  watch: "#c78b25",
-  normal: "#23866f",
-  unknown: "#8798ae",
+  priority: "#d6293e",
+  watch: "#a65e00",
+  normal: "#087c61",
+  unknown: "#586b82",
 };
 export const RISK_ORDER: Record<Risk, number> = {
   priority: 0,

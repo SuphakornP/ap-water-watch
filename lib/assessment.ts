@@ -170,7 +170,7 @@ export function assessProject(
       : `ไม่พบสถานีน้ำหรือฝนในรัศมี ${radius} กม.`,
   };
 }
-export function bankMargin(station: NearbyStation | undefined): number | null {
+export function bankMargin(station: Pick<NearbyStation, "fresh" | "status" | "bank" | "value"> | undefined): number | null {
   return station &&
     station.fresh &&
     station.status !== null &&

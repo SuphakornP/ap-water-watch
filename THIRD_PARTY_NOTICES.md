@@ -10,6 +10,7 @@ The root MIT license applies to original project software and documentation. Dep
 | Sites Vite plugin | MIT, copyright OpenAI; [included notice](build/sites-vite-plugin.LICENSE). |
 | IBM Plex Sans Thai | SIL Open Font License 1.1, copyright IBM; [included notice](licenses/IBM-Plex-Sans-Thai-OFL.txt). Distributed through `@fontsource/ibm-plex-sans-thai`. Font software is not covered by this project's MIT license. |
 | OpenStreetMap geographic data | ODbL; https://www.openstreetmap.org/copyright . Visible attribution is retained. |
+| Thailand province boundaries | Royal Thai Survey Department / OCHA / HDX via prasertcbs/thailand_gis; CC BY-IGO 3.0. [Source, pinned revision and adaptation notice](docs/THAILAND-GIS-NOTICE.md). Administrative reference dated 22 January 2022; not flood extent. |
 | OpenFreeMap / OpenMapTiles | Map hosting and vector schema; https://openfreemap.org/ and https://openmaptiles.org/ . Their own service/data terms apply. |
 | Other npm packages | Consult each package's license and copyright notices in its distribution. Versions are locked in `package-lock.json`. |
 
