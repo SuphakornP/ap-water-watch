@@ -108,3 +108,9 @@ tests/                16 tests ของข้อมูล เกณฑ์ แ�
 Repository นี้เป็น source สาธารณะ ส่วน [AP Water Watch ที่โฮสต์อยู่](https://ap-water-watch.suphakorn-pal.chatgpt.site/) มีการควบคุมสิทธิ์แยกต่างหาก การเปิด repo ไม่ได้เปิดสิทธิ์เข้าใช้งาน Site
 
 `.openai/hosting.json` ใน repo ไม่มี Site ID หรือ database binding หากใช้ Sites ให้สร้าง/เชื่อม Site ของคุณเอง หากนำไปโฮสต์ที่อื่นให้จัดการ authentication, สิทธิ์ข้อมูล และการตั้งค่า runtime ตามสภาพแวดล้อมนั้น
+
+## Nearby cameras
+
+Select a project, then **กล้องใกล้โครงการ**. Search 5/10/20 km independently of water-station screening; camera selection is blue and never changes risk colours. Current sources are source-link only: 511 reviewed BMA road-camera coordinates, 10 RID canal/pumping-station points, and the official ThaiWater camera catalogue (100 supported records at verification). No source currently has verified image redistribution permission, so the application does not fetch or embed camera pictures.
+
+Capture time, image retrieval time and catalogue check time are separate. Unavailable data is not a safety signal. See [verified sources, coverage, rights, caching and QA boundaries](docs/camera-sources.md). Run `npm test` for all flood and camera tests.

@@ -24,6 +24,7 @@ import {
   X,
   ArrowUpRight,
   Info,
+  Camera,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cityStyle } from "@/lib/city-style";
@@ -39,6 +40,7 @@ import {
   type Station,
 } from "@/lib/flood-types";
 import type { createWaterBeacons } from "@/lib/water-beacons";
+import type { NearbyCamera } from "@/lib/cameras";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 type Props = {
@@ -53,6 +55,11 @@ type Props = {
   onStationSelect: (id: string | null) => void;
   province: string;
   onProvinceSelect: (province: string) => void;
+  cameras: NearbyCamera[];
+  cameraId: string | null;
+  cameraMapRequest: number;
+  onCameraSelect: (id: string) => void;
+  onShowCameras: () => void;
 };
 const initialCamera = {
   center: [100.515, 13.723] as [number, number],
@@ -84,6 +91,11 @@ export default function FloodMap({
   onStationSelect,
   province,
   onProvinceSelect,
+  cameras,
+  cameraId,
+  cameraMapRequest,
+  onCameraSelect,
+  onShowCameras,
 }: Props) {
   const host = useRef<HTMLDivElement>(null),
     map = useRef<CityMap | null>(null);
@@ -104,10 +116,10 @@ export default function FloodMap({
   const [tour, setTour] = useState(false),
     [tourIndex, setTourIndex] = useState(0);
   const [zoom, setZoom] = useState(initialCamera.zoom);
-  const latest = useRef({ items, stations, onFocus, onProvinceSelect, onStationSelect });
+  const latest = useRef({ items, stations, onFocus, onProvinceSelect, onStationSelect, onCameraSelect });
   useEffect(() => {
-    latest.current = { items, stations, onFocus, onProvinceSelect, onStationSelect };
-  }, [items, stations, onFocus, onProvinceSelect, onStationSelect]);
+    latest.current = { items, stations, onFocus, onProvinceSelect, onStationSelect, onCameraSelect };
+  }, [items, stations, onFocus, onProvinceSelect, onStationSelect, onCameraSelect]);
   function setStationId(id: string | null) { latest.current.onStationSelect(id); }
   const selected = items.find((a) => a.project.id === focusId);
   const chosenStation = stations.find((s) => s.id === stationId);
@@ -180,6 +192,7 @@ export default function FloodMap({
           if (disposed) return;
           m.addSource("ap-projects", { type: "geojson", data: empty });
           m.addSource("water-stations", { type: "geojson", data: empty });
+          m.addSource("nearby-cameras", { type: "geojson", data: empty });
           m.addSource("station-link", { type: "geojson", data: empty });
           m.addLayer({
             id: "station-connection",
@@ -299,6 +312,19 @@ export default function FloodMap({
               "text-halo-width": 3,
             },
           });
+          const icon = document.createElement("canvas");
+          icon.width = 64; icon.height = 64;
+          const ctx = icon.getContext("2d");
+          if (ctx) {
+            ctx.fillStyle = "#fff"; ctx.fillRect(6, 10, 52, 44);
+            ctx.fillStyle = "#4c6278"; ctx.fillRect(10, 14, 44, 36);
+            ctx.fillStyle = "#fff"; ctx.fillRect(16, 24, 22, 17);
+            ctx.beginPath(); ctx.moveTo(38, 29); ctx.lineTo(48, 24); ctx.lineTo(48, 41); ctx.lineTo(38, 36); ctx.fill();
+            m.addImage("public-camera-icon", ctx.getImageData(0, 0, 64, 64), { pixelRatio: 2 });
+          }
+          m.addLayer({ id: "camera-selection", type: "circle", source: "nearby-cameras", filter: ["==", ["get", "id"], ""], paint: { "circle-radius": 18, "circle-color": "#edf5ff", "circle-stroke-color": "#1769e0", "circle-stroke-width": 3 } });
+          m.addLayer({ id: "camera-points", type: "symbol", source: "nearby-cameras", layout: { "icon-image": "public-camera-icon", "icon-size": 1, "icon-allow-overlap": true } });
+          m.addLayer({ id: "camera-label", type: "symbol", source: "nearby-cameras", filter: ["==", ["get", "id"], ""], layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"], "text-size": 12, "text-offset": [0, 2.2], "text-max-width": 18 }, paint: { "text-color": "#1769e0", "text-halo-color": "#fff", "text-halo-width": 2 } });
           setReady(true);
         });
         m.on("click", (e: MapMouseEvent) => {
@@ -308,7 +334,7 @@ export default function FloodMap({
               [e.point.x - 12, e.point.y - 12],
               [e.point.x + 12, e.point.y + 48],
             ],
-            { layers: ["project-dots", "station-dots"] },
+            { layers: ["project-dots", "station-dots", "camera-points"] },
           );
           const project = hits.find((h) => h.layer.id === "project-dots");
           if (project) {
@@ -335,6 +361,11 @@ export default function FloodMap({
             setStationId(null);
             setTour(false);
             setListOpen(false);
+          } else if (hits.some(hit => hit.layer.id === "camera-points")) {
+            const camera = hits.find(hit => hit.layer.id === "camera-points")!;
+            setTour(false);
+            setExpanded(false);
+            latest.current.onCameraSelect(String(camera.properties.id));
           } else if (hits[0]) {
             setTour(false);
             const ids = new Set(hits.map((hit) => String(hit.properties.id)));
@@ -378,7 +409,7 @@ export default function FloodMap({
                 [e.point.x - 12, e.point.y - 12],
                 [e.point.x + 12, e.point.y + 48],
               ],
-              { layers: ["project-dots", "station-dots"] },
+              { layers: ["project-dots", "station-dots", "camera-points"] },
             ).length
               ? "pointer"
               : "";
@@ -474,6 +505,23 @@ export default function FloodMap({
     beacons.current?.setAnimated(city && animated && !reducedMotion);
     beacons.current?.setVisible(city);
   }, [city, animated, reducedMotion, ready]);
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m) return;
+    (m.getSource("nearby-cameras") as GeoJSONSource).setData({ type: "FeatureCollection", features: cameras.map(c => ({ type: "Feature", geometry: { type: "Point", coordinates: [c.lng, c.lat] }, properties: { id: c.id, name: c.name } })) });
+    m.setFilter("camera-selection", ["==", ["get", "id"], cameraId ?? ""]);
+    m.setFilter("camera-label", ["==", ["get", "id"], cameraId ?? ""]);
+  }, [cameras, cameraId, ready]);
+  useEffect(() => {
+    const m = map.current, camera = cameras.find(c => c.id === cameraId), p = selected?.project;
+    if (!ready || !m || !cameraMapRequest || !camera || !p || p.lat === null || p.lng === null) return;
+    setTour(false);
+    const points = [[p.lng, p.lat], [camera.lng, camera.lat], ...(selected?.trigger ? [[selected.trigger.lng, selected.trigger.lat]] : [])];
+    m.fitBounds([[Math.min(...points.map(p => p[0])), Math.min(...points.map(p => p[1]))], [Math.max(...points.map(p => p[0])), Math.max(...points.map(p => p[1]))]], { padding: cameraPadding(), maxZoom: 14.3, pitch: 0, duration: reducedMotion ? 0 : 800 });
+    setCity(false);
+    setWater(true);
+    if (selected?.trigger?.kind === "rain") setRain(true);
+  }, [cameraMapRequest, ready]);
   useEffect(() => {
     if (ready && sceneReady.current)
       map.current?.setLayoutProperty(
@@ -1007,6 +1055,7 @@ export default function FloodMap({
                   ดูโครงการพร้อมสถานีอ้างอิง
                   <ArrowUpRight size={13} />
                 </button>
+                <button className="city-evidence" onClick={() => { setExpanded(false); setTour(false); onShowCameras(); }}><Camera size={15} /> กล้องใกล้โครงการ · {cameras.length} จุด <ArrowUpRight size={13} /></button>
                 <div className={`city-action-hint ${selected.risk}`}>
                   <span>สิ่งที่ควรทำตอนนี้</span>
                   <b>

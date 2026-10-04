@@ -28,6 +28,7 @@ import {
   X,
   Box,
   CheckCheck,
+  Camera,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -57,6 +58,9 @@ import projectsJson from "@/data/projects.json";
 import provinceIndex from "@/data/province-index.json";
 import FloodMap from "./FloodMap";
 import StationAnalysis from "./StationAnalysis";
+import NearbyCameras from "./NearbyCameras";
+import { useCameras } from "@/lib/use-cameras";
+import { nearbyCameras, type CameraRadius } from "@/lib/cameras";
 import { useProjectTools } from "@/lib/use-project-tools";
 import { assessProject } from "@/lib/assessment";
 import {
@@ -635,6 +639,9 @@ export default function Dashboard() {
     [filtersOpen, setFiltersOpen] = useState(false),
     [stationId, setStationId] = useState<string | null>(null),
     [motionReduced, setMotionReduced] = useState(false);
+  const [cameraRadius, setCameraRadius] = useState<CameraRadius>(5);
+  const [cameraId, setCameraId] = useState<string | null>(null);
+  const [cameraMapRequest, setCameraMapRequest] = useState(0);
   const deferredSearch = useDeferredValue(search);
   const refresh = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -734,6 +741,21 @@ export default function Dashboard() {
   );
   useProjectTools(rows, Number(radius));
   const focused = rows.find((a) => a.project.id === focusId);
+  const cameraData = useCameras(Boolean(focused));
+  const cameras = useMemo(() => focused ? nearbyCameras(focused.project, cameraData.catalog?.cameras ?? [], cameraRadius) : [], [focused, cameraData.catalog, cameraRadius]);
+  const activeCameraId = cameras.some(c => c.id === cameraId) ? cameraId : cameras[0]?.id ?? null;
+  function scrollToSection(id: string) {
+    setDetailOpen(false);
+    setTab("overview");
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: motionReduced ? "instant" : "smooth", block: "start" }), 120);
+  }
+  function selectCamera(id: string) { setCameraId(id); }
+  function showCameraOnMap(id: string) {
+    setCameraId(id);
+    setView("map");
+    setCameraMapRequest(request => request + 1);
+    scrollToSection("project-map");
+  }
   useEffect(() => {
     if (focusId && !rows.some(a => a.project.id === focusId)) {
       setFocusId(null);
@@ -749,6 +771,8 @@ export default function Dashboard() {
   const chooseProject = useCallback((id: string | null) => {
     setFocusId(id);
     setStationId(null);
+    setCameraId(null);
+    setCameraRadius(5);
   }, []);
   useEffect(() => {
     if (stationId && focused && ![...focused.water, ...focused.rain].some(s => s.id === stationId)) setStationId(null);
@@ -1048,6 +1072,11 @@ export default function Dashboard() {
                     onProvinceSelect={(value) => { setProvince(value); setRegion("all"); chooseProject(null); }}
                     onSelect={selectProject}
                     reducedMotion={motionReduced}
+                    cameras={cameras}
+                    cameraId={activeCameraId}
+                    cameraMapRequest={cameraMapRequest}
+                    onCameraSelect={(id) => { selectCamera(id); scrollToSection("nearby-cameras"); }}
+                    onShowCameras={() => scrollToSection("nearby-cameras")}
                   />
                 </TabsContent>
                 <TabsContent value="list">
@@ -1133,8 +1162,9 @@ export default function Dashboard() {
                   <Waves size={14} /> STATION INSIGHT
                 </span>
               </div>
-              <div className="insight-grid">
-                <div className="water-insight">
+              <nav className="evidence-flow" aria-label="ขั้นตอนตรวจสอบโครงการ"><button onClick={() => scrollToSection("station-evidence")}><Radio size={16} /> 1. สัญญาณน้ำและฝน</button><ChevronRight size={15} /><button onClick={() => scrollToSection("nearby-cameras")}><Camera size={16} /> 2. กล้องใกล้เคียง</button><ChevronRight size={15} /><button onClick={() => scrollToSection("project-actions")}><ShieldCheck size={16} /> 3. สิ่งที่ควรทำ</button></nav>
+              <div className="insight-grid camera-flow">
+                <div className="water-insight" id="station-evidence">
                   <div className="insight-project">
                     <div>
                       <span>โครงการที่เลือก</span>
@@ -1165,17 +1195,18 @@ export default function Dashboard() {
                     <ChevronRight size={15} />
                   </button>
                 </div>
-                <Checklist
+                <NearbyCameras key={focused.project.id} projectName={focused.project.name} hasCoordinates={focused.project.lat !== null && focused.project.lng !== null} cameras={cameras} catalog={cameraData.catalog} loading={cameraData.loading} error={cameraData.error} radius={cameraRadius} onRadiusChange={(value) => { setCameraRadius(value); setCameraId(null); }} cameraId={activeCameraId} onSelect={selectCamera} onRefresh={() => void cameraData.refresh()} onMap={showCameraOnMap} onAction={() => scrollToSection("project-actions")} />
+                <div id="project-actions"><Checklist
                   key={focused.project.id + focused.risk + String(detailOpen)}
                   assessment={focused}
-                />
+                /></div>
               </div>
             </section>
           ) : (
             <div className="empty-selection">
               <Box size={22} />
               <span>
-                เลือกโครงการเพื่อดูสถานีอ้างอิง ระดับน้ำ และสิ่งที่ควรทำ
+                เลือกโครงการเพื่อดูสถานีน้ำ/ฝน กล้องใกล้เคียง และสิ่งที่ควรทำ
               </span>
             </div>
           )}
@@ -1236,10 +1267,6 @@ export default function Dashboard() {
                   ไม่ยืนยันว่าโครงการได้รับผลกระทบ
                 </small>
               </div>
-              <Checklist
-                key={focused.project.id + focused.risk + "detail"}
-                assessment={focused}
-              />
               <p className="project-address">
                 <MapPin size={16} />
                 {focused.project.address || "ไม่มีรายละเอียดที่อยู่"}
@@ -1252,6 +1279,8 @@ export default function Dashboard() {
                   : "โครงการในทะเบียน AP"}
               </div>
               <Stations assessment={focused} />
+              <button className="button-outline camera-sheet-link" onClick={() => scrollToSection("nearby-cameras")}><Camera size={18} /> ดูกล้องใกล้โครงการ · {cameras.length} จุดใน {cameraRadius} กม. <ChevronRight size={16} /></button>
+              <Checklist key={focused.project.id + focused.risk + "detail"} assessment={focused} />
               <div className="sheet-method">
                 <Info size={15} />
                 <span>
