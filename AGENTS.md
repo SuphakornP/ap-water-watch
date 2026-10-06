@@ -10,3 +10,4 @@
 - Run tests, type checking and build for relevant code changes; inspect the browser for layout and interaction changes.
 - Checklists are browser-local and do not represent shared operational completion.
 - Preserve upstream licenses and public attribution.
+- Keep the footer release version and developer credit in `lib/app-info.ts`; update the release version when publishing and keep both source editions consistent.

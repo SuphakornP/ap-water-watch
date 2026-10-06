@@ -59,6 +59,7 @@ import {
 } from "@/components/ui/table";
 import projectsJson from "@/data/projects.json";
 import provinceIndex from "@/data/province-index.json";
+import { APP_INFO } from "@/lib/app-info";
 import NearbyCameras from "./NearbyCameras";
 import ExecutiveOverview from "./ExecutiveOverview";
 import ProjectDecision from "./ProjectDecision";
@@ -1310,9 +1311,13 @@ export default function Dashboard() {
         <footer>
           <span>
             <Droplets size={16} /> AP WATER WATCH
+            <small className="footer-version" aria-label={`เวอร์ชัน ${APP_INFO.version}`}>v{APP_INFO.version}</small>
           </span>
           <span>เฝ้าระวังเพื่อเตรียมพร้อม · ไม่ใช่ประกาศเตือนภัยทางการ</span>
-          <span>AP THAILAND</span>
+          <span className="footer-credit">
+            <span>AP THAILAND</span>
+            <span>ผู้พัฒนา {APP_INFO.developer}</span>
+          </span>
         </footer>
       </main>
       {focused && (
