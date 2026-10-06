@@ -862,13 +862,9 @@ export default function Dashboard() {
     <Tabs value={tab} onValueChange={setTab} className="app-shell">
       <header className="app-header">
         <a className="brand" href="/" aria-label="AP Water Watch หน้าหลัก">
-          <span className="ap-logo">
-            AP<span>THAILAND</span>
-          </span>
-          <i />
-          <span className="brand-name">
-            WATER<span>WATCH</span>
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element -- Serve the small SVG directly without an image runtime. */}
+          <img className="brand-logo" src="/brand/ap-logo.svg" alt="AP Thailand" width={24} height={38} />
+          <span className="brand-name">Water Watch</span>
         </a>
         <TabsList className="main-nav" variant="line">
           <TabsTrigger value="overview">

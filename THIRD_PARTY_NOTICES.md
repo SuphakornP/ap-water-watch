@@ -4,6 +4,7 @@ The root MIT license applies to original project software and documentation. Dep
 
 | Component | Terms and notice |
 | --- | --- |
+| AP Thailand logo | Trademark/brand asset; [official-source provenance and usage notice](docs/BRAND-NOTICE.md). Not covered by the project's MIT license. |
 | MapLibre GL JS / generated worker modules | BSD-3-Clause; [included notice](public/vendor/maplibre/LICENSE.txt). Regenerated from the installed package by `scripts/prepare-map-worker.mjs`. |
 | Three.js | MIT; license included in its npm distribution. |
 | shadcn UI / vendored Tailwind stylesheet | MIT; [included stylesheet notice](vendor/shadcn-tailwind-4.13.0.LICENSE.md). Component source originates from shadcn. |

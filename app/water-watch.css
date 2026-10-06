@@ -6,21 +6,22 @@
   --risk-priority: #d6293e; --risk-watch: #a65e00; --risk-normal: #087c61; --risk-unknown: #586b82;
   --surface-priority: #fff0f2; --surface-watch: #fff5de; --surface-normal: #e8f7f0; --surface-unknown: #edf1f6;
   --selection: #1769e0; --selection-surface: #edf5ff;
+  --brand-red: #a61e27;
 }
 body { background: #f4f8fc; color: var(--ink); }
 button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--selection); outline-offset: 3px; }
 button { -webkit-tap-highlight-color: transparent; }
-.app-header { height: 72px; background: #fff; border-bottom: 1px solid var(--border); padding: 0 32px; }
-.brand-name { color: var(--ink); font-size: 16px; }
-.brand-name > span { color: var(--blue); }
-.ap-logo { color: #bd2438; }
+.app-header { height: 76px; background: #fff; border-bottom: 1px solid var(--border); padding: 0 32px; }
+.brand { gap: 12px; flex-shrink: 0; }
+.brand-logo { display: block; height: 48px; width: auto; aspect-ratio: 24 / 38; flex-shrink: 0; }
+.brand-name { color: var(--brand-red); font-size: 30px; font-weight: 700; line-height: 1.15; letter-spacing: -.6px; white-space: nowrap; }
 .main-nav [data-slot="tabs-trigger"][data-state="active"], .main-nav [data-slot="tabs-trigger"][data-active] { color: var(--primary); }
-.main-nav [data-slot="tabs-trigger"] { min-height: 48px; font-size: 15px; }
+.main-nav [data-slot="tabs-trigger"] { min-height: 48px; font-size: 16px; font-weight: 700; }
 .main-nav [data-slot="tabs-trigger"]::after { background: var(--primary); }
 .internal-tag { color: var(--dim); border-color: var(--border); }
 main { padding: 22px 32px 0; }
 .page-heading { margin-bottom: 16px; gap: 16px; }
-.page-heading h1 { color: var(--ink); font-size: 30px; font-weight: 600; letter-spacing: -.5px; }
+.page-heading h1 { color: var(--ink); font-size: 36px; font-weight: 700; line-height: 1.35; letter-spacing: -.5px; }
 .page-heading p { display: none; }
 .title-dot { color: var(--blue); }
 .page-heading .sync-box, .page-heading .sync-box small { font-size: 13px; color: var(--dim); }
@@ -72,7 +73,7 @@ main { padding: 22px 32px 0; }
 .attention-panel { background: #fff; border-color: var(--border); }
 .attention-heading { padding: 22px 22px 18px; border-color: var(--border); }
 .attention-heading .eyebrow { color: var(--primary); font-size: 12px; letter-spacing: 1.5px; }
-.attention-heading h2 { font-size: 23px; color: var(--ink); line-height: 1.4; }
+.attention-heading h2 { font-size: 24px; font-weight: 700; color: var(--ink); line-height: 1.4; }
 .attention-heading p { color: var(--dim); font-size: 14px; }
 .attention-item { padding: 18px 20px; border-color: var(--border); border-left: 4px solid transparent; }
 .attention-item.priority { border-left-color: var(--risk-priority); }
@@ -81,7 +82,7 @@ main { padding: 22px 32px 0; }
 .attention-item.unknown { border-left-color: var(--risk-unknown); }
 .attention-item.is-focused { background: var(--selection-surface); box-shadow: inset 0 0 0 2px var(--selection); }
 .attention-item.is-focused:before { display: none; }
-.attention-item h3 { color: var(--ink); font-size: 19px; line-height: 1.5; margin: 10px 0 8px; }
+.attention-item h3 { color: var(--ink); font-size: 20px; font-weight: 700; line-height: 1.5; margin: 10px 0 8px; }
 .attention-item-top .risk-label { font-size: 13px; }
 .attention-reason { color: var(--dim); font-size: 14px; line-height: 1.65; }
 .attention-time { font-size: 13px; color: var(--dim); }
@@ -242,13 +243,22 @@ tr[data-selected="true"] { box-shadow: inset 3px 0 var(--selection); background:
   .stat p { display: none; }
   .stat strong { font-size: 30px; }
 }
+@media (max-width: 1100px) {
+  .internal-tag { display: none; }
+}
+@media (max-width: 760px) {
+  .app-header { height: auto; padding: 14px 16px 0; flex-wrap: wrap; gap: 10px; }
+  .brand-logo { height: 42px; }
+  .brand-name { font-size: 26px; }
+  .page-heading h1 { font-size: 28px; }
+}
 @media (max-width: 600px) {
   .app-header { height: auto; padding: 14px 16px 0; flex-wrap: wrap; }
   .app-header .main-nav { gap: 6px; height: 46px; flex-basis: 100%; }
   .app-header .main-nav [data-slot="tabs-trigger"] { font-size: 13px; padding: 8px 3px; min-height: 44px; }
   main { padding: 16px 14px 0; }
   .page-heading { margin-bottom: 12px; gap: 6px; }
-  .page-heading h1 { font-size: 24px; line-height: 1.4; }
+  .page-heading h1 { font-size: 28px; line-height: 1.4; }
   .page-heading .sync-box { padding-right: 48px; min-height: 44px; gap: 4px; flex-wrap: wrap; font-size: 12px; }
   .page-heading .sync-box small { font-size: 12px; }
   .sync-box > button { top: 0; }
