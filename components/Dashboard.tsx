@@ -1,6 +1,8 @@
 "use client";
 import releaseInfo from "@/data/release.json";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -29,6 +31,7 @@ import {
   Box,
   CheckCheck,
   Camera,
+  LayoutDashboard,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -56,9 +59,13 @@ import {
 } from "@/components/ui/table";
 import projectsJson from "@/data/projects.json";
 import provinceIndex from "@/data/province-index.json";
-import FloodMap from "./FloodMap";
 import StationAnalysis from "./StationAnalysis";
 import NearbyCameras from "./NearbyCameras";
+import ExecutiveOverview from "./ExecutiveOverview";
+import ProjectDecision from "./ProjectDecision";
+import DecisionShare from "./DecisionShare";
+import { projectDecision } from "@/lib/project-decision";
+import { readViewState, writeViewState } from "@/lib/view-state";
 import { useCameras } from "@/lib/use-cameras";
 import { nearbyCameras, type CameraRadius } from "@/lib/cameras";
 import { useProjectTools } from "@/lib/use-project-tools";
@@ -72,6 +79,7 @@ import {
   type Risk,
 } from "@/lib/flood-types";
 const projects: Project[] = projectsJson;
+const FloodMap = lazy(() => import("./FloodMap"));
 const statuses: Risk[] = ["priority", "watch", "normal", "unknown"];
 const regions = [
   ...new Set(projects.map((p) => p.region).filter((p): p is string => !!p)),
@@ -159,12 +167,13 @@ function AttentionProjects({
               </div>
               <h3>{item.project.name}</h3>
               {focusId === item.project.id && <span className="selection-label">กำลังเลือก</span>}
-              <p className="attention-reason">{item.reason}</p>
+              <p className="attention-reason">{projectDecision(item).why}</p>
+              <p className="attention-reason"><b>ทำต่อ:</b> {projectDecision(item).action}</p>
               {item.trigger && (
                 <small className="attention-time">วัด {time(item.trigger.observedAt)}</small>
               )}
               <button className="attention-action" onClick={() => onSelect(item.project.id)}>
-                ดูสถานีและสิ่งที่ควรทำ <ChevronRight size={16} />
+                ดูผลกระทบและสิ่งที่ควรทำ <ChevronRight size={16} />
               </button>
             </article>
           ))}
@@ -622,7 +631,7 @@ function Guide() {
 }
 export default function Dashboard() {
   const [tab, setTab] = useState("overview"),
-    [view, setView] = useState("map"),
+    [view, setView] = useState("executive"),
     [search, setSearch] = useState(""),
     [region, setRegion] = useState("all"),
     [province, setProvince] = useState("all"),
@@ -642,6 +651,25 @@ export default function Dashboard() {
   const [cameraRadius, setCameraRadius] = useState<CameraRadius>(5);
   const [cameraId, setCameraId] = useState<string | null>(null);
   const [cameraMapRequest, setCameraMapRequest] = useState(0);
+  const [viewReady, setViewReady] = useState(false);
+  const [stationExpanded, setStationExpanded] = useState(false);
+  useEffect(() => {
+    const state = readViewState(window.location.search);
+    // Restore browser-only URL state after the matching server render has hydrated.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSearch(state.q);
+    setRegion(regions.includes(state.region) ? state.region : "all");
+    setProvince(state.province === "ยังไม่ระบุจังหวัด" || provinceIndex.some(p => p.name === state.province) ? state.province : "all");
+    setBrand(brands.includes(state.brand) ? state.brand : "all");
+    setRisk(state.risk); setRadius(state.radius); setView(state.view);
+    setFocusId(projects.some(p => p.id === state.project) ? state.project : null);
+    setViewReady(true);
+  }, []);
+  useEffect(() => {
+    if (!viewReady) return;
+    const query = writeViewState({ q: search, region, province, brand, risk, radius, view, project: focusId });
+    window.history.replaceState(null, "", window.location.pathname + (query ? `?${query}` : "") + window.location.hash);
+  }, [viewReady, search, region, province, brand, risk, radius, view, focusId]);
   const deferredSearch = useDeferredValue(search);
   const refresh = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -740,6 +768,9 @@ export default function Dashboard() {
     [scoped, risk],
   );
   useProjectTools(rows, Number(radius));
+  const visiblePriority = rows.filter(a => a.risk === "priority").length;
+  const visibleWatch = rows.filter(a => a.risk === "watch").length;
+  const visibleUnknown = rows.filter(a => a.risk === "unknown").length;
   const focused = rows.find((a) => a.project.id === focusId);
   const cameraData = useCameras(Boolean(focused));
   const cameras = useMemo(() => focused ? nearbyCameras(focused.project, cameraData.catalog?.cameras ?? [], cameraRadius) : [], [focused, cameraData.catalog, cameraRadius]);
@@ -747,6 +778,8 @@ export default function Dashboard() {
   function scrollToSection(id: string) {
     setDetailOpen(false);
     setTab("overview");
+    setView("map");
+    if (id === "station-evidence") setStationExpanded(true);
     setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: motionReduced ? "instant" : "smooth", block: "start" }), 120);
   }
   function selectCamera(id: string) { setCameraId(id); }
@@ -757,12 +790,12 @@ export default function Dashboard() {
     scrollToSection("project-map");
   }
   useEffect(() => {
-    if (focusId && !rows.some(a => a.project.id === focusId)) {
+    if (viewReady && feed.fetchedAt && focusId && !rows.some(a => a.project.id === focusId)) {
       setFocusId(null);
       setStationId(null);
       setDetailOpen(false);
     }
-  }, [rows, focusId]);
+  }, [rows, focusId, viewReady, feed.fetchedAt]);
   const healthy = feed.sources.filter((s) => s.state === "ok").length;
   function chooseStation(id: string | null) {
     setStationId(id);
@@ -783,6 +816,7 @@ export default function Dashboard() {
     setDetailOpen(true);
   }
   function focusProject(id: string) {
+    setView("map");
     chooseProject(id);
     setFocusRequest((request) => request + 1);
     requestAnimationFrame(() => {
@@ -841,11 +875,11 @@ export default function Dashboard() {
         <TabsContent value="overview">
           <div className="page-heading">
             <div>
-              <span className="eyebrow">PROJECT WATER MONITORING</span>
+              <span className="eyebrow">PROJECT RISK & RESPONSE</span>
               <h1>
-                สถานการณ์น้ำรอบโครงการ<span className="title-dot">.</span>
+                โครงการไหนต้องเตรียมรับมือ<span className="title-dot">.</span>
               </h1>
-              <p>ดูสัญญาณจากสถานีใกล้เคียง แล้วเตรียมพร้อมให้แต่ละพื้นที่</p>
+              <p>ความเสี่ยง · เหตุผล · ผลกระทบ · สิ่งที่ต้องทำ</p>
             </div>
             <div className="sync-box">
               <span>
@@ -883,8 +917,8 @@ export default function Dashboard() {
           {releaseInfo.demo && <div className="data-alert" role="status"><Info size={16}/>โหมดตัวอย่าง · พิกัดสาธิต ไม่ใช่โครงการ AP จริง · ค่าสถานีมาจากข้อมูลเปิด</div>}
           <div className="decision-summary" aria-live="polite">
             <Waves size={22} aria-hidden="true" />
-            <p>{loading && !feed.fetchedAt ? "กำลังตรวจสัญญาณน้ำและฝน" : counts.priority > 0 ? <><b>{counts.priority} โครงการควรตรวจสอบก่อน</b><span>ยืนยันหน้างานจากสัญญาณสถานีใกล้เคียง</span></> : counts.watch > 0 ? <><b>{counts.watch} โครงการควรเฝ้าระวัง</b><span>ตรวจสถานีและเตรียมระบบระบายน้ำ</span></> : <><b>ติดตามข้อมูลรอบโครงการ</b><span>{counts.unknown} โครงการยังมีข้อมูลไม่เพียงพอ</span></>}</p>
-            {rows[0] && <button onClick={() => focusProject(rows[0].project.id)}>เริ่มตรวจสอบ <MapPin size={16} /></button>}
+            <p>{loading && !feed.fetchedAt ? "กำลังตรวจสัญญาณน้ำและฝน" : visiblePriority > 0 ? <><b>{visiblePriority} โครงการในมุมมองควรตรวจสอบก่อน</b><span>ยืนยันหน้างานจากสัญญาณสถานีใกล้เคียง</span></> : visibleWatch > 0 ? <><b>{visibleWatch} โครงการในมุมมองควรเฝ้าระวัง</b><span>ตรวจสถานีและเตรียมระบบระบายน้ำ</span></> : <><b>{rows.length ? "ติดตามข้อมูลรอบโครงการ" : "ไม่มีโครงการในตัวกรองนี้"}</b><span>{visibleUnknown} โครงการยังมีข้อมูลไม่เพียงพอ</span></>}</p>
+            {rows[0] && <button onClick={() => selectProject(rows[0].project.id)}>เริ่มตรวจสอบ <ChevronRight size={16} /></button>}
           </div>
           {error && (
             <div className="data-alert" role="alert">
@@ -939,6 +973,7 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
+          <div className="decision-trust-line"><span><i className="observed-key" />ข้อมูลจริง: น้ำ / ฝน 1 และ 24 ชม.</span><span><i className="assessment-key" />สีโครงการ: การคัดกรองของระบบ</span><span><i className="forecast-key" />ยังไม่มีพยากรณ์น้ำถึงโครงการ</span></div>
           {feed.warning && (
             <div className="bulletin">
               <span>
@@ -1020,9 +1055,14 @@ export default function Dashboard() {
               </button>
             )}
           </div>
+          <DecisionShare demo={releaseInfo.demo} items={rows} feed={feed} radius={Number(radius)} scopeLabel={[
+            [region, province, brand].filter(v => v !== "all").join(" · ") || "ทุกพื้นที่",
+            deferredSearch.trim() ? `ค้นหา: ${deferredSearch.trim()}` : "",
+            risk === "all" ? "ทุกระดับ" : risk === "attention" ? "ต้องติดตาม" : RISK_LABEL[risk as Risk],
+          ].filter(Boolean).join(" · ")} />
           <Tabs value={view} onValueChange={setView} className="view-tabs">
             <section
-              className={`monitor-workspace ${view === "list" ? "table-workspace" : ""}`}
+              className={`monitor-workspace ${view !== "map" ? "table-workspace" : ""}`}
             >
               {view === "map" && (
                 <AttentionProjects
@@ -1039,8 +1079,8 @@ export default function Dashboard() {
                   <div className="map-heading">
                     <h2>
                       {view === "map"
-                        ? "แผนที่โครงการและสถานี"
-                        : "โครงการทั้งหมด"}
+                        ? "ความเสี่ยงตามพื้นที่"
+                        : view === "executive" ? "ภาพรวมเพื่อการตัดสินใจ" : "โครงการทั้งหมด"}
                     </h2>
                     <small>
                       {rows.length} โครงการ
@@ -1049,6 +1089,7 @@ export default function Dashboard() {
                     </small>
                   </div>
                   <TabsList className="view-toggle">
+                    <TabsTrigger value="executive" aria-label="มุมมองผู้บริหาร"><LayoutDashboard size={16} /><span>ผู้บริหาร</span></TabsTrigger>
                     <TabsTrigger value="map" aria-label="มุมมองแผนที่">
                       <MapIcon size={15} />
                       <span>แผนที่</span>
@@ -1059,7 +1100,9 @@ export default function Dashboard() {
                     </TabsTrigger>
                   </TabsList>
                 </div>
+                <TabsContent value="executive"><ExecutiveOverview items={rows} selectedId={focusId} loading={loading && !feed.fetchedAt} onFocus={chooseProject} onDetail={selectProject} onMap={focusProject} /></TabsContent>
                 <TabsContent value="map">
+                  <Suspense fallback={<div className="executive-empty" role="status">กำลังเปิดแผนที่โครงการ…</div>}>
                   <FloodMap
                     items={rows}
                     stations={feed.stations}
@@ -1078,6 +1121,7 @@ export default function Dashboard() {
                     onCameraSelect={(id) => { selectCamera(id); scrollToSection("nearby-cameras"); }}
                     onShowCameras={() => scrollToSection("nearby-cameras")}
                   />
+                  </Suspense>
                 </TabsContent>
                 <TabsContent value="list">
                   <div className="table-scroll">
@@ -1087,7 +1131,7 @@ export default function Dashboard() {
                           <TableHead>โครงการ</TableHead>
                           <TableHead>จังหวัด</TableHead>
                           <TableHead>ระดับที่ควรติดตาม</TableHead>
-                          <TableHead>สัญญาณใกล้เคียง</TableHead>
+                          <TableHead>เหตุผล / สิ่งที่ต้องทำ</TableHead>
                           <TableHead />
                         </TableRow>
                       </TableHeader>
@@ -1112,7 +1156,7 @@ export default function Dashboard() {
                               <RiskLabel risk={a.risk} />
                             </TableCell>
                             <TableCell className="reason-cell">
-                              {a.reason}
+                              {projectDecision(a).why}<small className="table-next-action">{projectDecision(a).action}</small>
                             </TableCell>
                             <TableCell>
                               <button
@@ -1151,12 +1195,12 @@ export default function Dashboard() {
               เข้าใจเกณฑ์การเฝ้าระวัง
             </button>
           </div>
-          {focused ? (
+          {focused && view !== "executive" ? (
             <section className="insight-section" id="water-insight">
               <div className="insight-heading">
                 <div>
                   <span className="eyebrow">FROM SIGNAL TO ACTION</span>
-                  <h2>ระดับน้ำและสิ่งที่ควรทำ</h2>
+                  <h2>ผลกระทบและการเตรียมพร้อม</h2>
                 </div>
                 <span className="three-badge">
                   <Waves size={14} /> STATION INSIGHT
@@ -1172,6 +1216,8 @@ export default function Dashboard() {
                     </div>
                     <div className="selection-context"><RiskLabel risk={focused.risk} /><button onClick={() => chooseProject(null)}>กลับภาพรวม <X size={16} /></button></div>
                   </div>
+                  <ProjectDecision assessment={focused} compact />
+                  <details className="station-technical" open={stationExpanded} onToggle={event => setStationExpanded(event.currentTarget.open)}><summary>เปิดข้อมูลสถานีและระดับน้ำ</summary>
                   {feed.fetchedAt ? (
                     <StationAnalysis
                       key={focused.project.id}
@@ -1187,6 +1233,7 @@ export default function Dashboard() {
                         : "ยังไม่มีข้อมูลสถานีสำหรับวิเคราะห์ โปรดลองรีเฟรชข้อมูล"}
                     </p>
                   )}
+                  </details>
                   <button
                     className="text-action"
                     onClick={() => selectProject(focused.project.id)}
@@ -1202,14 +1249,14 @@ export default function Dashboard() {
                 /></div>
               </div>
             </section>
-          ) : (
+          ) : view !== "executive" ? (
             <div className="empty-selection">
               <Box size={22} />
               <span>
                 เลือกโครงการเพื่อดูสถานีน้ำ/ฝน กล้องใกล้เคียง และสิ่งที่ควรทำ
               </span>
             </div>
-          )}
+          ) : null}
           <div className="source-footer">
             <div>
               <span className="source-footer-icon">
@@ -1259,14 +1306,10 @@ export default function Dashboard() {
               </SheetDescription>
             </SheetHeader>
             <div className="sheet-body">
-              <div className={`project-status ${focused.risk}`}>
-                <RiskLabel risk={focused.risk} />
-                <p>{focused.reason}</p>
-                <small>
-                  ใช้สัญญาณสูงสุดจากสถานีในรัศมี {radius} กม.
-                  ไม่ยืนยันว่าโครงการได้รับผลกระทบ
-                </small>
-              </div>
+              <ProjectDecision assessment={focused} compact />
+              <DecisionShare demo={releaseInfo.demo} items={[focused]} feed={feed} radius={Number(radius)} projectId={focused.project.id} scopeLabel={focused.project.name} />
+              <Checklist key={focused.project.id + focused.risk + "detail"} assessment={focused} />
+              <details className="station-technical"><summary>รายละเอียดโครงการและสถานีอ้างอิง</summary>
               <p className="project-address">
                 <MapPin size={16} />
                 {focused.project.address || "ไม่มีรายละเอียดที่อยู่"}
@@ -1279,8 +1322,8 @@ export default function Dashboard() {
                   : "โครงการในทะเบียน AP"}
               </div>
               <Stations assessment={focused} />
+              </details>
               <button className="button-outline camera-sheet-link" onClick={() => scrollToSection("nearby-cameras")}><Camera size={18} /> ดูกล้องใกล้โครงการ · {cameras.length} จุดใน {cameraRadius} กม. <ChevronRight size={16} /></button>
-              <Checklist key={focused.project.id + focused.risk + "detail"} assessment={focused} />
               <div className="sheet-method">
                 <Info size={15} />
                 <span>
@@ -1290,18 +1333,7 @@ export default function Dashboard() {
               </div>
               <button
                 className="button-outline"
-                onClick={() => {
-                  setDetailOpen(false);
-                  setTab("overview");
-                  setTimeout(
-                    () =>
-                      document.getElementById("water-insight")?.scrollIntoView({
-                        behavior: motionReduced ? "instant" : "smooth",
-                        block: "center",
-                      }),
-                    120,
-                  );
-                }}
+                onClick={() => scrollToSection("station-evidence")}
               >
                 <Box size={17} />
                 ดูระดับน้ำเทียบตลิ่ง

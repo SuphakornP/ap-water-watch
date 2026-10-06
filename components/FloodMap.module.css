@@ -1,0 +1,20 @@
+@media (max-width: 1100px) {
+  /* Keep the risk legend above the expanded source attribution on narrow maps. */
+  .frame:global(.city-frame) {
+    grid-template-rows: 600px auto;
+    min-height: 600px;
+  }
+
+  .frame:global(.city-frame) > :global(.city-canvas),
+  .frame:global(.city-frame) > :global(.city-atmosphere) {
+    height: 600px;
+  }
+
+  .frame:global(.city-expanded) {
+    min-height: 0;
+  }
+
+  .frame:global(.city-expanded) :global(.city-inspector) {
+    margin-top: 600px;
+  }
+}

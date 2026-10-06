@@ -32,6 +32,8 @@ import { stationRisk, tourProjects } from "@/lib/map-signals";
 import { representativeWater, bankMargin, isFresh } from "@/lib/assessment";
 import { initialRainPeriod, representativeRain, mapPadding } from "@/lib/presentation";
 import WaterLevelGauge from "./WaterLevelGauge";
+import ProvinceRiskOverview from "./ProvinceRiskOverview";
+import styles from "./FloodMap.module.css";
 import provinceIndex from "@/data/province-index.json";
 import {
   RISK_COLOR,
@@ -62,10 +64,10 @@ type Props = {
   onShowCameras: () => void;
 };
 const initialCamera = {
-  center: [100.515, 13.723] as [number, number],
-  zoom: 14.25,
-  pitch: 60,
-  bearing: -28,
+  center: [100.56, 13.87] as [number, number],
+  zoom: 9.3,
+  pitch: 0,
+  bearing: 0,
 };
 const empty: FeatureCollection = { type: "FeatureCollection", features: [] };
 const clock = (s: string | null) =>
@@ -104,10 +106,10 @@ export default function FloodMap({
   const [ready, setReady] = useState(false),
     [error, setError] = useState("");
   const [water, setWater] = useState(true),
-    [boundaries, setBoundaries] = useState(false),
+    [boundaries, setBoundaries] = useState(true),
     [rain, setRain] = useState(false),
     [buildings, setBuildings] = useState(true),
-    [city, setCity] = useState(true),
+    [city, setCity] = useState(false),
     [animated, setAnimated] = useState(true);
   const [listOpen, setListOpen] = useState(false),
     [layersOpen, setLayersOpen] = useState(false),
@@ -164,14 +166,10 @@ export default function FloodMap({
       .then(([ml, visual]) => {
         if (disposed || !host.current) return;
         ml.setWorkerUrl("/vendor/maplibre/maplibre-gl-worker.mjs");
-        const initial3d = host.current.clientWidth > 720 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        setCity(initial3d);
         const m = new ml.Map({
           container: host.current,
           style: cityStyle,
           ...initialCamera,
-          pitch: initial3d ? initialCamera.pitch : 0,
-          bearing: initial3d ? initialCamera.bearing : 0,
           cooperativeGestures: true,
           maxPitch: 70,
           minZoom: 4.5,
@@ -666,6 +664,21 @@ export default function FloodMap({
       duration: reducedMotion ? 0 : 900,
     });
   }
+  function viewBangkok() {
+    const areas = provinceIndex.filter(area => ["TH10", "TH11", "TH12", "TH13", "TH73", "TH74"].includes(area.id));
+    if (!map.current || !areas.length) return;
+    setTour(false);
+    onFocus(null);
+    setStationId(null);
+    setCity(false);
+    setBoundaries(true);
+    map.current.fitBounds(
+      [[Math.min(...areas.map(area => area.bbox[0])), Math.min(...areas.map(area => area.bbox[1]))],
+        [Math.max(...areas.map(area => area.bbox[2])), Math.max(...areas.map(area => area.bbox[3]))]],
+      { padding: cameraPadding(false), pitch: 0, bearing: 0, duration: reducedMotion ? 0 : 1000 },
+    );
+    host.current?.closest(".city-frame")?.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "center" });
+  }
   function nextStop(direction: number) {
     const index = (tourIndex + direction + stops.length) % stops.length;
     setTourIndex(index);
@@ -706,20 +719,21 @@ export default function FloodMap({
   const rainPeriod = initialRainPeriod(activeRain);
   const rainValue = activeRain?.fresh ? (rainPeriod === "1h" ? activeRain.rain1h : activeRain.value) : null;
   return (
-    <div className={`city-frame ${expanded ? "city-expanded" : ""} ${city ? "is-3d" : "is-2d"}`}>
+    <>
+    <div className={`${styles.frame} city-frame ${expanded ? "city-expanded" : ""} ${city ? "is-3d" : "is-2d"}`}>
       <div
         ref={host}
         className="city-canvas"
-        aria-label="แผนที่เมืองสามมิติ โครงการ AP และสถานีตรวจวัด"
+        aria-label="แผนที่โครงการ AP สถานีอ้างอิง และขอบเขตจังหวัด"
       />
       <div className="city-atmosphere" />
       <div className="city-title">
         <span className="city-kicker">
           <i /> WATER ATLAS <span> / {city ? "3D" : "2D"}</span>
         </span>
-        <h2>โครงการและสถานี</h2>
+        <h2>โครงการและพื้นที่รอบข้าง</h2>
         <p>
-          {selected?.project.province ?? "สำรวจโครงการ AP บนแผนที่ประเทศไทย"}
+          {selected?.project.province ?? "ขอบเขตจังหวัด · สีหมุดแสดงสัญญาณของโครงการ"}
         </p>
         <div className="city-key">
           <span>
@@ -916,8 +930,8 @@ export default function FloodMap({
             setTour(false);
             map.current?.flyTo({
               ...initialCamera,
-              pitch: city ? initialCamera.pitch : 0,
-              bearing: city ? initialCamera.bearing : 0,
+              pitch: city ? 58 : 0,
+              bearing: city ? -28 : 0,
               duration: reducedMotion ? 0 : 1700,
               padding: { top: 0, bottom: 0, left: 0, right: 0 },
             });
@@ -1055,6 +1069,7 @@ export default function FloodMap({
                   ดูโครงการพร้อมสถานีอ้างอิง
                   <ArrowUpRight size={13} />
                 </button>
+                <small>เส้นประเชื่อมแหล่งอ้างอิง ยังไม่ยืนยันทางไหลของน้ำ</small>
                 <button className="city-evidence" onClick={() => { setExpanded(false); setTour(false); onShowCameras(); }}><Camera size={15} /> กล้องใกล้โครงการ · {cameras.length} จุด <ArrowUpRight size={13} /></button>
                 <div className={`city-action-hint ${selected.risk}`}>
                   <span>สิ่งที่ควรทำตอนนี้</span>
@@ -1160,7 +1175,7 @@ export default function FloodMap({
           <i style={{ background: RISK_COLOR.unknown }} />
           ข้อมูลไม่พอ
         </span>
-        <button aria-label="วิธีอ่านแผนที่ 3D" onClick={() => setHelp(!help)}>
+        <button aria-label="วิธีอ่านแผนที่" onClick={() => setHelp(!help)}>
           <Info size={15} />
         </button>
       </div>
@@ -1179,11 +1194,13 @@ export default function FloodMap({
           <button onClick={() => setHelp(false)}>เข้าใจแล้ว</button>
         </div>
       )}
-      {zoom < 12 && (
+      {city && zoom < 12 && (
         <span className="city-zoom-hint">
           ซูมเข้าเพื่อดูอาคารและสถานีสามมิติ
         </span>
       )}
     </div>
+    <ProvinceRiskOverview items={items} province={province} onProvinceSelect={onProvinceSelect} onViewBangkok={viewBangkok} />
+    </>
   );
 }
