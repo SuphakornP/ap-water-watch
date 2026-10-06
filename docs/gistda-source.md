@@ -1,6 +1,6 @@
 # GISTDA seven-day flood extent
 
-The optional map overlay shows the retrospective GISTDA flood extent used by the official ThaiWater map. It is a separate raster layer beneath roads, labels and monitoring markers. It does not enter the project risk calculation, infer flood depth or perform a project-boundary intersection.
+The map opens with the retrospective GISTDA flood extent used by the official ThaiWater map enabled. Users can switch it off. It is a separate raster layer beneath roads, labels and monitoring markers. It does not enter the project risk calculation, infer flood depth or perform a project-boundary intersection.
 
 ## Verified source
 
@@ -22,4 +22,4 @@ Transparent pixels may reflect coverage, detection limitations, timing or an abs
 
 The map requests XYZ tiles from `/api/flood-tiles/{z}/{x}/{y}`. The server validates tile coordinates and converts them to Web Mercator bounds for the fixed official endpoint. Raster size is 256 pixels; the display uses source zooms 0 through 14 with overzoom for closer views, restricted to Thailand's bounding area. Overzoom does not add source resolution.
 
-The proxy accepts only bounded PNG responses with the expected dimensions. Errors remain errors rather than synthetic transparent tiles. Successful tiles use a bounded short-lived cache, while failures are not cached. The overlay is fetched only when enabled; errors and retries are separate from base-map health. Public and deployed trees share this code, while the public tree retains synthetic project data.
+The proxy accepts only bounded PNG responses with the expected dimensions. Errors remain errors rather than synthetic transparent tiles. Successful tiles use a bounded short-lived cache, while failures are not cached. The overlay is fetched only while the map is mounted and the layer is enabled (the default). It starts once the base style is ready, without waiting for all basemap tiles. Switching it off removes the raster source and stops further requests; errors and retries are separate from base-map health. Public and deployed trees share this code, while the public tree retains synthetic project data.

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { Map as CityMap, GeoJSONSource, MapMouseEvent, MapSourceDataEvent, ErrorEvent as MapErrorEvent, ExpressionSpecification } from "maplibre-gl";
 import type { FeatureCollection, LineString } from "geojson";
 import {
@@ -34,7 +34,6 @@ import { stationRisk, tourProjects } from "@/lib/map-signals";
 import { CLUSTER_RISKS, PROJECT_CLUSTER_PROPERTIES, clusterMembers, projectMapFeatures } from "@/lib/map-clusters";
 import { representativeWater, bankMargin, isFresh } from "@/lib/assessment";
 import { initialRainPeriod, representativeRain, mapPadding } from "@/lib/presentation";
-import WaterLevelGauge from "./WaterLevelGauge";
 import ProvinceRiskOverview from "./ProvinceRiskOverview";
 import DwrStationDetails from "./DwrStationDetails";
 import { dwrStatusColor, dwrStatusLabel } from "@/lib/dwr-context";
@@ -49,9 +48,11 @@ import {
   type Station,
   type SourceHealth,
 } from "@/lib/flood-types";
-import type { createWaterBeacons } from "@/lib/water-beacons";
+import type { BeaconPoint, createWaterBeacons } from "@/lib/water-beacons";
 import type { NearbyCamera } from "@/lib/cameras";
 import "maplibre-gl/dist/maplibre-gl.css";
+
+const WaterLevelGauge = lazy(() => import("./WaterLevelGauge"));
 
 type Props = {
   items: Assessment[];
@@ -130,6 +131,8 @@ export default function FloodMap({
   const host = useRef<HTMLDivElement>(null),
     map = useRef<CityMap | null>(null);
   const beacons = useRef<ReturnType<typeof createWaterBeacons> | null>(null);
+  const beaconState = useRef<{ points: BeaconPoint[]; selectedId?: string; animated: boolean }>({ points: [], animated: false });
+  const [beaconError, setBeaconError] = useState("");
   const sceneReady = useRef(false);
   const [ready, setReady] = useState(false),
     [error, setError] = useState("");
@@ -149,9 +152,9 @@ export default function FloodMap({
   const [grouped, setGrouped] = useState(true);
   const [dwrVisible, setDwrVisible] = useState(true);
   const [dwrId, setDwrId] = useState<string | null>(null);
-  const [floodVisible, setFloodVisible] = useState(false);
+  const [floodVisible, setFloodVisible] = useState(true);
   const [floodOpacity, setFloodOpacity] = useState(0.65);
-  const [floodState, setFloodState] = useState<FloodLayerState>("off");
+  const [floodState, setFloodState] = useState<FloodLayerState>("loading");
   const [floodRetry, setFloodRetry] = useState(0);
   const [groupIds, setGroupIds] = useState<string[] | null>(null);
   const [groupLoading, setGroupLoading] = useState(false);
@@ -160,6 +163,7 @@ export default function FloodMap({
   const groupPending = useRef(false);
   const groupTitle = useRef<HTMLHeadingElement>(null);
   const mappedFeatures = useMemo(() => projectMapFeatures(items), [items]);
+  const stationItems = useMemo(() => stations.filter(station => station.kind === "water" ? water : rain), [stations, water, rain]);
   const mapMembership = mappedFeatures.features.map(feature => `${feature.properties?.id}:${feature.geometry.coordinates.join(",")}`).sort().join("|");
   const group = useMemo(() => clusterMembers(items, groupIds ?? []), [items, groupIds]);
   const latest = useRef({ items, stations, dwrStations, now, onFocus, onProvinceSelect, onStationSelect, onCameraSelect, reducedMotion });
@@ -230,8 +234,8 @@ export default function FloodMap({
     sceneReady.current = false;
     setReady(false);
     let observer: ResizeObserver | undefined;
-    Promise.all([import("maplibre-gl"), import("@/lib/water-beacons")])
-      .then(([ml, visual]) => {
+    import("maplibre-gl")
+      .then((ml) => {
         if (disposed || !host.current) return;
         function selectDwrStation(id: string) {
           closeGroup();
@@ -264,7 +268,8 @@ export default function FloodMap({
           console.error("City map source error", e.error);
           setError("บางส่วนของแผนที่โหลดไม่สำเร็จ ลองโหลดแผนที่ใหม่");
         });
-        m.on("load", () => {
+        // Install overlays as soon as the style exists, without waiting for basemap tiles.
+        m.once("style.load", () => {
           if (disposed) return;
           m.addSource("ap-projects", { type: "geojson", data: empty });
           m.addSource("ap-project-clusters", {
@@ -368,9 +373,6 @@ export default function FloodMap({
               "circle-stroke-width": 2,
             },
           });
-          const b = visual.createWaterBeacons(m);
-          beacons.current = b;
-          m.addLayer(b.layer);
           m.addLayer({
             id: "project-names",
             type: "symbol",
@@ -688,9 +690,6 @@ export default function FloodMap({
   useEffect(() => {
     const m = map.current;
     if (!ready || !m || !sceneReady.current) return;
-    const stationItems = stations.filter((s) =>
-      s.kind === "water" ? water : rain,
-    );
     (m.getSource("water-stations") as GeoJSONSource).setData({
       type: "FeatureCollection",
       features: stationItems.map((s) => ({
@@ -699,12 +698,13 @@ export default function FloodMap({
         properties: {
           id: s.id,
           name: s.name,
-          color: RISK_COLOR[stationRisk(s)],
+          color: RISK_COLOR[stationRisk(s, now)],
         },
       })),
     });
-    beacons.current?.update(
-      [
+  }, [stationItems, ready, now]);
+  useEffect(() => {
+    const points: BeaconPoint[] = city ? [
         ...(grouped ? [] : items)
           .filter((a) => a.project.lat !== null && a.project.lng !== null)
           .map((a) => ({
@@ -719,14 +719,41 @@ export default function FloodMap({
           id: s.id,
           lng: s.lng,
           lat: s.lat,
-          color: RISK_COLOR[stationRisk(s)],
+          color: RISK_COLOR[stationRisk(s, now)],
           kind: s.kind,
-          severity: stationRisk(s),
+          severity: stationRisk(s, now),
         })),
-      ],
-      stationId ?? focusId ?? undefined,
-    );
-  }, [items, stations, ready, water, rain, focusId, stationId, grouped]);
+      ] : [];
+    const current = { points, selectedId: stationId ?? focusId ?? undefined, animated: animated && !reducedMotion };
+    beaconState.current = current;
+    beacons.current?.update(current.points, current.selectedId);
+    beacons.current?.setAnimated(current.animated);
+  }, [city, items, stationItems, focusId, stationId, grouped, animated, reducedMotion, now]);
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m || !city) return;
+    let disposed = false;
+    let layer: ReturnType<typeof createWaterBeacons> | undefined;
+    // Keep Three.js and its move/resize mesh work out of the default 2D map.
+    import("@/lib/water-beacons").then(({ createWaterBeacons }) => {
+      if (disposed || map.current !== m) return;
+      layer = createWaterBeacons(m);
+      m.addLayer(layer.layer, "project-names");
+      beacons.current = layer;
+      const current = beaconState.current;
+      layer.setAnimated(current.animated);
+      layer.update(current.points, current.selectedId);
+    }).catch(failure => {
+      if (disposed) return;
+      console.error("3D water symbols could not be loaded", failure);
+      setBeaconError("โหลดสัญลักษณ์ 3D ไม่สำเร็จ · ยังดูข้อมูลบนแผนที่ 2D ได้");
+    });
+    return () => {
+      disposed = true;
+      if (beacons.current === layer) beacons.current = null;
+      if (layer && map.current === m && m.getLayer(layer.layer.id)) m.removeLayer(layer.layer.id);
+    };
+  }, [city, ready]);
   useEffect(() => {
     const m = map.current;
     if (!ready || !m) return;
@@ -746,16 +773,16 @@ export default function FloodMap({
     m.setFilter("dwr-station-selection", ["==", ["get", "id"], chosenDwr?.id ?? ""]);
   }, [dwrVisible, chosenDwr, ready]);
   useEffect(() => {
-    beacons.current?.setAnimated(city && animated && !reducedMotion);
-    beacons.current?.setVisible(city);
-  }, [city, animated, reducedMotion, ready]);
-  useEffect(() => {
     const m = map.current;
     if (!ready || !m) return;
     (m.getSource("nearby-cameras") as GeoJSONSource).setData({ type: "FeatureCollection", features: cameras.map(c => ({ type: "Feature", geometry: { type: "Point", coordinates: [c.lng, c.lat] }, properties: { id: c.id, name: c.name } })) });
+  }, [cameras, ready]);
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m) return;
     m.setFilter("camera-selection", ["==", ["get", "id"], cameraId ?? ""]);
     m.setFilter("camera-label", ["==", ["get", "id"], cameraId ?? ""]);
-  }, [cameras, cameraId, ready]);
+  }, [cameraId, ready]);
   useEffect(() => {
     const m = map.current, camera = cameras.find(c => c.id === cameraId), p = selected?.project;
     if (!ready || !m || !cameraMapRequest || !camera || !p || p.lat === null || p.lng === null) return;
@@ -903,6 +930,7 @@ export default function FloodMap({
     return mapPadding(width, height, withInspector && window.innerWidth > 1100 ? panel?.offsetWidth ?? 310 : 0);
   }
   function viewCity(next: boolean) {
+    if (next !== city) setBeaconError("");
     setCity(next);
     setTour(false);
     map.current?.easeTo({
@@ -1178,11 +1206,11 @@ export default function FloodMap({
           <span>อาคาร แม่น้ำ และพิกัดโครงการจริง</span>
         </div>
       )}
-      {error && (
+      {(error || (city && beaconError)) && (
         <div className="city-error" role="status">
           <Info size={16} />
-          {error}
-          <button onClick={() => location.reload()}>โหลดใหม่</button>
+          {error || beaconError}
+          {error ? <button onClick={() => location.reload()}>โหลดใหม่</button> : <button onClick={() => viewCity(false)}>กลับแผนที่ 2D</button>}
         </div>
       )}
       {(groupLoading || groupIds || groupError) && !listOpen && !layersOpen && (
@@ -1292,7 +1320,7 @@ export default function FloodMap({
                   {chosenStation.kind === "water" ? "ม.รทก." : `มม. / ${chosenRainPeriod === "1h" ? "1" : "24"} ชม.`}
                 </small>
               </div>
-              {chosenStation.kind === "water" && <WaterLevelGauge station={{...chosenStation, fresh: isFresh(chosenStation.observedAt)}} />}
+              {chosenStation.kind === "water" && <Suspense fallback={<p role="status">กำลังโหลดภาพระดับน้ำเทียบตลิ่ง…</p>}><WaterLevelGauge station={{...chosenStation, fresh: isFresh(chosenStation.observedAt)}} /></Suspense>}
               {chosenStation.kind === "rain" && (
                 <p>ฝน {chosenRainPeriod === "1h" ? "24" : "1"} ชม. {(chosenRainPeriod === "1h" ? chosenStation.value : chosenStation.rain1h)?.toFixed(1) ?? "—"} มม.</p>
               )}

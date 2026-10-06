@@ -59,7 +59,6 @@ import {
 } from "@/components/ui/table";
 import projectsJson from "@/data/projects.json";
 import provinceIndex from "@/data/province-index.json";
-import StationAnalysis from "./StationAnalysis";
 import NearbyCameras from "./NearbyCameras";
 import ExecutiveOverview from "./ExecutiveOverview";
 import ProjectDecision from "./ProjectDecision";
@@ -82,6 +81,7 @@ import {
 } from "@/lib/flood-types";
 const projects: Project[] = projectsJson;
 const FloodMap = lazy(() => import("./FloodMap"));
+const StationAnalysis = lazy(() => import("./StationAnalysis"));
 const statuses: Risk[] = ["priority", "watch", "normal", "unknown"];
 const regions = [
   ...new Set(projects.map((p) => p.region).filter((p): p is string => !!p)),
@@ -645,7 +645,7 @@ function Guide() {
 }
 export default function Dashboard() {
   const [tab, setTab] = useState("overview"),
-    [view, setView] = useState("executive"),
+    [view, setView] = useState("map"),
     [search, setSearch] = useState(""),
     [region, setRegion] = useState("all"),
     [province, setProvince] = useState("all"),
@@ -1117,7 +1117,7 @@ export default function Dashboard() {
                 <TabsContent value="executive"><ExecutiveOverview items={rows} selectedId={focusId} loading={loading && !feed.fetchedAt} onFocus={chooseProject} onDetail={selectProject} onMap={focusProject} feed={feed} radius={Number(radius)} now={now} /></TabsContent>
                 <TabsContent value="map">
                   <Suspense fallback={<div className="executive-empty" role="status">กำลังเปิดแผนที่โครงการ…</div>}>
-                  <FloodMap
+                  {viewReady && <FloodMap
                     now={now}
                     items={rows}
                     stations={feed.stations}
@@ -1137,7 +1137,7 @@ export default function Dashboard() {
                     cameraMapRequest={cameraMapRequest}
                     onCameraSelect={(id) => { selectCamera(id); scrollToSection("nearby-cameras"); }}
                     onShowCameras={() => scrollToSection("nearby-cameras")}
-                  />
+                  />}
                   </Suspense>
                 </TabsContent>
                 <TabsContent value="list">
@@ -1235,7 +1235,8 @@ export default function Dashboard() {
                   </div>
                   <ProjectDecision assessment={focused} compact />
                   <details className="station-technical" open={stationExpanded} onToggle={event => setStationExpanded(event.currentTarget.open)}><summary>เปิดข้อมูลสถานีและระดับน้ำ</summary>
-                  {feed.fetchedAt ? (
+                  {stationExpanded && (feed.fetchedAt ? (
+                    <Suspense fallback={<p role="status" className="measurement-note">กำลังเปิดข้อมูลสถานี…</p>}>
                     <StationAnalysis
                       key={focused.project.id}
                       assessment={focused}
@@ -1243,13 +1244,14 @@ export default function Dashboard() {
                       onStationChange={chooseStation}
                       reducedMotion={motionReduced}
                     />
+                    </Suspense>
                   ) : (
                     <p role="status" className="measurement-note">
                       {loading
                         ? "กำลังโหลดข้อมูลสถานีเพื่อวิเคราะห์"
                         : "ยังไม่มีข้อมูลสถานีสำหรับวิเคราะห์ โปรดลองรีเฟรชข้อมูล"}
                     </p>
-                  )}
+                  ))}
                   </details>
                   <button
                     className="text-action"
