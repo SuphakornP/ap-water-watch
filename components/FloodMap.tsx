@@ -25,6 +25,7 @@ import {
   ArrowUpRight,
   Info,
   Camera,
+  RadioTower,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cityStyle } from "@/lib/city-style";
@@ -34,6 +35,9 @@ import { representativeWater, bankMargin, isFresh } from "@/lib/assessment";
 import { initialRainPeriod, representativeRain, mapPadding } from "@/lib/presentation";
 import WaterLevelGauge from "./WaterLevelGauge";
 import ProvinceRiskOverview from "./ProvinceRiskOverview";
+import DwrStationDetails from "./DwrStationDetails";
+import { dwrStatusColor, dwrStatusLabel } from "@/lib/dwr-context";
+import type { DwrStation } from "@/lib/dwr-types";
 import styles from "./FloodMap.module.css";
 import provinceIndex from "@/data/province-index.json";
 import {
@@ -41,6 +45,7 @@ import {
   RISK_LABEL,
   type Assessment,
   type Station,
+  type SourceHealth,
 } from "@/lib/flood-types";
 import type { createWaterBeacons } from "@/lib/water-beacons";
 import type { NearbyCamera } from "@/lib/cameras";
@@ -49,6 +54,9 @@ import "maplibre-gl/dist/maplibre-gl.css";
 type Props = {
   items: Assessment[];
   stations?: Station[];
+  dwrStations?: DwrStation[];
+  sourceDwr?: SourceHealth;
+  now: number;
   focusId: string | null;
   manualFocusRequest: number;
   onFocus: (id: string | null) => void;
@@ -91,6 +99,9 @@ const clock = (s: string | null) =>
 export default function FloodMap({
   items,
   stations = [],
+  dwrStations = [],
+  sourceDwr,
+  now,
   focusId,
   manualFocusRequest,
   onFocus,
@@ -126,6 +137,8 @@ export default function FloodMap({
     [tourIndex, setTourIndex] = useState(0);
   const [zoom, setZoom] = useState(initialCamera.zoom);
   const [grouped, setGrouped] = useState(true);
+  const [dwrVisible, setDwrVisible] = useState(true);
+  const [dwrId, setDwrId] = useState<string | null>(null);
   const [groupIds, setGroupIds] = useState<string[] | null>(null);
   const [groupLoading, setGroupLoading] = useState(false);
   const [groupError, setGroupError] = useState("");
@@ -135,10 +148,10 @@ export default function FloodMap({
   const mappedFeatures = useMemo(() => projectMapFeatures(items), [items]);
   const mapMembership = mappedFeatures.features.map(feature => `${feature.properties?.id}:${feature.geometry.coordinates.join(",")}`).sort().join("|");
   const group = useMemo(() => clusterMembers(items, groupIds ?? []), [items, groupIds]);
-  const latest = useRef({ items, stations, onFocus, onProvinceSelect, onStationSelect, onCameraSelect, reducedMotion });
+  const latest = useRef({ items, stations, dwrStations, now, onFocus, onProvinceSelect, onStationSelect, onCameraSelect, reducedMotion });
   useEffect(() => {
-    latest.current = { items, stations, onFocus, onProvinceSelect, onStationSelect, onCameraSelect, reducedMotion };
-  }, [items, stations, onFocus, onProvinceSelect, onStationSelect, onCameraSelect, reducedMotion]);
+    latest.current = { items, stations, dwrStations, now, onFocus, onProvinceSelect, onStationSelect, onCameraSelect, reducedMotion };
+  }, [items, stations, dwrStations, now, onFocus, onProvinceSelect, onStationSelect, onCameraSelect, reducedMotion]);
   function closeGroup() {
     groupRequest.current++;
     groupPending.current = false;
@@ -155,12 +168,14 @@ export default function FloodMap({
   function setStationId(id: string | null) { latest.current.onStationSelect(id); }
   const selected = items.find((a) => a.project.id === focusId);
   const chosenStation = stations.find((s) => s.id === stationId);
+  const chosenDwr = dwrVisible && !selected && !chosenStation ? dwrStations.find(station => station.id === dwrId) : undefined;
   const chosenRainPeriod = initialRainPeriod(chosenStation ? { ...chosenStation, fresh: isFresh(chosenStation.observedAt) } : undefined);
   const [showAllLinked, setShowAllLinked] = useState(false);
   useEffect(() => {
     setShowAllLinked(false);
-    if (stationId) { setTour(false); closeGroup(); }
-  }, [stationId]);
+    if (stationId) { setTour(false); closeGroup(); setDwrId(null); }
+    if (focusId) setDwrId(null);
+  }, [stationId, focusId]);
   const linkedProjects = chosenStation
     ? items.filter((a) => a.trigger?.id === chosenStation.id)
     : [];
@@ -185,6 +200,7 @@ export default function FloodMap({
     setStationId(null);
     setListOpen(false);
     setLayersOpen(false);
+    setDwrId(null);
   }, [manualFocusRequest]);
 
   useEffect(() => {
@@ -195,6 +211,15 @@ export default function FloodMap({
     Promise.all([import("maplibre-gl"), import("@/lib/water-beacons")])
       .then(([ml, visual]) => {
         if (disposed || !host.current) return;
+        function selectDwrStation(id: string) {
+          closeGroup();
+          setDwrId(id);
+          setStationId(null);
+          latest.current.onFocus(null);
+          setTour(false);
+          setListOpen(false);
+          setLayersOpen(false);
+        }
         ml.setWorkerUrl("/vendor/maplibre/maplibre-gl-worker.mjs");
         const m = new ml.Map({
           container: host.current,
@@ -225,6 +250,7 @@ export default function FloodMap({
           });
           m.addSource("ap-project-selection", { type: "geojson", data: empty });
           m.addSource("water-stations", { type: "geojson", data: empty });
+          m.addSource("dwr-stations", { type: "geojson", data: empty });
           m.addSource("nearby-cameras", { type: "geojson", data: empty });
           m.addSource("station-link", { type: "geojson", data: empty });
           m.addLayer({
@@ -256,6 +282,25 @@ export default function FloodMap({
               "circle-stroke-color": "#f7faf4",
               "circle-stroke-width": 1.2,
             },
+          });
+          m.addLayer({
+            id: "dwr-station-selection", type: "circle", source: "dwr-stations",
+            filter: ["==", ["get", "id"], ""],
+            paint: { "circle-radius": 16, "circle-color": "transparent", "circle-stroke-color": "#1769e0", "circle-stroke-width": 3 },
+          });
+          for (const status of [0, 1, 2, 3, 9, null] as const) {
+            const icon = document.createElement("canvas");
+            icon.width = 32; icon.height = 32;
+            const context = icon.getContext("2d");
+            if (!context) continue;
+            context.fillStyle = "#ffffff"; context.fillRect(2, 2, 28, 28);
+            context.fillStyle = dwrStatusColor(status, true); context.fillRect(5, 5, 22, 22);
+            context.strokeStyle = "#20394e"; context.lineWidth = 1; context.strokeRect(2, 2, 28, 28);
+            m.addImage(`dwr-square-${status ?? "unknown"}`, context.getImageData(0, 0, 32, 32), { pixelRatio: 2 });
+          }
+          m.addLayer({
+            id: "dwr-station-points", type: "symbol", source: "dwr-stations",
+            layout: { "icon-image": ["get", "icon"], "icon-size": ["interpolate", ["linear"], ["zoom"], 6, 0.65, 12, 1], "icon-allow-overlap": true, "icon-ignore-placement": true },
           });
           m.addLayer({
             id: "project-halos",
@@ -389,6 +434,27 @@ export default function FloodMap({
         });
         m.on("click", async (e: MapMouseEvent) => {
           if (!m.getLayer("project-dots")) return;
+          const exactHits = m.queryRenderedFeatures(e.point, { layers: ["project-dots", "project-clusters", "project-cluster-single", "dwr-station-points", "camera-points"] });
+          if (exactHits[0]?.layer.id === "dwr-station-points") {
+            const ids = new Set(exactHits.filter(hit => hit.layer.id === "dwr-station-points").map(hit => String(hit.properties.id)));
+            const candidates = latest.current.dwrStations.filter(station => ids.has(station.id));
+            if (candidates.length > 1) {
+              const panel = document.createElement("div");
+              const title = document.createElement("b");
+              title.textContent = "เลือกข้อมูล DWR ณ จุดนี้";
+              panel.appendChild(title);
+              const popup = new ml.Popup({ maxWidth: "320px" }).setLngLat(e.lngLat);
+              for (const station of candidates) {
+                const button = document.createElement("button");
+                button.className = "map-popup-project";
+                button.textContent = `${station.kind === "water" ? "น้ำ" : "ฝน"} · ${station.name} · ${dwrStatusLabel(station.alertStatus, isFresh(station.reportAt, latest.current.now))}`;
+                button.onclick = () => { selectDwrStation(station.id); popup.remove(); };
+                panel.appendChild(button);
+              }
+              popup.setDOMContent(panel).addTo(m);
+            } else if (candidates[0]) selectDwrStation(candidates[0].id);
+            return;
+          }
           const hits = m.queryRenderedFeatures(
             [
               [e.point.x - 12, e.point.y - 12],
@@ -399,6 +465,7 @@ export default function FloodMap({
           const cluster = hits.find(hit => hit.layer.id === "project-clusters");
           if (cluster && cluster.geometry.type === "Point") {
             closeGroup();
+            setDwrId(null);
             setTour(false);
             setListOpen(false);
             setLayersOpen(false);
@@ -429,6 +496,7 @@ export default function FloodMap({
             return;
           }
           closeGroup();
+          setDwrId(null);
           const project = hits.find((h) => h.layer.id === "project-dots" || h.layer.id === "project-cluster-single");
           if (project) {
             const candidates = latest.current.items.filter(
@@ -490,7 +558,7 @@ export default function FloodMap({
                 [e.point.x - 12, e.point.y - 12],
                 [e.point.x + 12, e.point.y + 48],
               ],
-              { layers: ["project-dots", "project-clusters", "project-cluster-single", "station-dots", "camera-points"] },
+              { layers: ["project-dots", "project-clusters", "project-cluster-single", "station-dots", "dwr-station-points", "camera-points"] },
             ).length
               ? "pointer"
               : "";
@@ -581,6 +649,24 @@ export default function FloodMap({
     );
   }, [items, stations, ready, water, rain, focusId, stationId, grouped]);
   useEffect(() => {
+    const m = map.current;
+    if (!ready || !m) return;
+    (m.getSource("dwr-stations") as GeoJSONSource).setData({
+      type: "FeatureCollection",
+      features: dwrStations.map(station => ({
+        type: "Feature", geometry: { type: "Point", coordinates: [station.lng, station.lat] },
+        properties: { id: station.id, icon: `dwr-square-${isFresh(station.reportAt, now) ? station.alertStatus ?? "unknown" : "unknown"}` },
+      })),
+    });
+  }, [dwrStations, ready, now]);
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m) return;
+    for (const layer of ["dwr-station-points", "dwr-station-selection"])
+      m.setLayoutProperty(layer, "visibility", dwrVisible ? "visible" : "none");
+    m.setFilter("dwr-station-selection", ["==", ["get", "id"], chosenDwr?.id ?? ""]);
+  }, [dwrVisible, chosenDwr, ready]);
+  useEffect(() => {
     beacons.current?.setAnimated(city && animated && !reducedMotion);
     beacons.current?.setVisible(city);
   }, [city, animated, reducedMotion, ready]);
@@ -643,6 +729,7 @@ export default function FloodMap({
     if (fitted.current === ids) return;
     fitted.current = ids;
     setTour(false);
+    setDwrId(null);
     setStationId(null);
     if (items.length && items.length < 350 && !(boundaries && province !== "all")) fitItems();
   }, [items, ready]);
@@ -749,6 +836,7 @@ export default function FloodMap({
     const areas = provinceIndex.filter(area => ["TH10", "TH11", "TH12", "TH13", "TH73", "TH74"].includes(area.id));
     if (!map.current || !areas.length) return;
     setTour(false);
+    setDwrId(null);
     onFocus(null);
     setStationId(null);
     setCity(false);
@@ -770,6 +858,7 @@ export default function FloodMap({
       p = selected?.project;
     if (!m || !p || p.lng === null || p.lat === null || !selected) return;
     setTour(false);
+    setDwrId(null);
     setStationId(null);
     const sources = [
       selected.trigger,
@@ -826,6 +915,7 @@ export default function FloodMap({
             สถานีตรวจวัด
           </span>
         </div>
+        {dwrVisible && <small className={styles.dwrKey}><i />DWR · สีตามเกณฑ์เตือนภัยของหน่วยงาน</small>}
         <div className={styles.groupControl}>
           <label>
             <span>แสดงเป็นกลุ่ม</span>
@@ -911,6 +1001,15 @@ export default function FloodMap({
               aria-label="สถานีวัดฝน"
             />
           </label>
+          <label>
+            <RadioTower size={17} />
+            DWR · เตือนภัยล่วงหน้า
+            <Switch checked={dwrVisible} onCheckedChange={value => { setDwrVisible(value); if (!value) setDwrId(null); }} aria-label="DWR · เตือนภัยล่วงหน้า" />
+          </label>
+          <small className={styles.dwrLayerNote}>
+            {sourceDwr?.state === "error" ? "DWR เชื่อมต่อไม่ได้ · ยังไม่ใช้สรุปว่าปลอดภัย" : `DWR ${dwrStations.length.toLocaleString("th-TH")} รายการ · สี่เหลี่ยมแสดงแยกจากสถานี ThaiWater`}
+            <br />แดง วิกฤต · ส้ม เตรียมพร้อม · เหลือง เฝ้าระวัง · ฟ้า มีฝน · เทา ไม่มีคำเตือน/ข้อมูลเก่า/ไม่ทราบ
+          </small>
           <label>
             <Eye size={17} />
             ภาพเคลื่อนไหว
@@ -1009,6 +1108,13 @@ export default function FloodMap({
           </>}
         </section>
       )}
+      {chosenDwr && !listOpen && !layersOpen && !groupIds && !groupLoading && !groupError && (
+        <section className={`city-inspector glass-panel ${styles.dwrInspector}`} aria-label="สถานี DWR ที่เลือก">
+          <button className={styles.dwrClose} onClick={() => setDwrId(null)} aria-label="ปิดสถานี DWR"><X size={17} /></button>
+          {sourceDwr?.state === "error" && <p role="status" className={styles.dwrSourceError}>การเชื่อมต่อ DWR ล่าสุดไม่สำเร็จ · ตรวจเวลาในรายงานก่อนใช้งาน</p>}
+          <DwrStationDetails station={chosenDwr} fetchedAt={sourceDwr?.fetchedAt} now={now} />
+        </section>
+      )}
       <div className="city-navigation glass-panel">
         <button
           aria-label="ซูมเข้า"
@@ -1057,7 +1163,7 @@ export default function FloodMap({
           <RotateCcw size={17} />
         </button>
       </div>
-      {(selected || chosenStation) && !listOpen && !layersOpen && !groupIds && !groupLoading && !groupError && (
+      {(selected || chosenStation) && !chosenDwr && !listOpen && !layersOpen && !groupIds && !groupLoading && !groupError && (
         <div className="city-inspector glass-panel" aria-label={chosenStation ? "สถานีที่เลือก" : "โครงการที่เลือก"}>
           {chosenStation ? (
             <>
@@ -1236,6 +1342,7 @@ export default function FloodMap({
           aria-label="แสดงทุกโครงการบนแผนที่"
           onClick={() => {
             closeGroup();
+            setDwrId(null);
             setTour(false);
             onFocus(null);
             setStationId(null);
@@ -1251,6 +1358,7 @@ export default function FloodMap({
           disabled={!stops.length}
           onClick={() => {
             closeGroup();
+            setDwrId(null);
             setTour(!tour);
             setStationId(null);
             setListOpen(false);
@@ -1311,6 +1419,7 @@ export default function FloodMap({
             แม่น้ำสีน้ำเงินแสดงภูมิศาสตร์
           </p>
           <p>แสดงเป็นกลุ่มจะรวมเฉพาะโครงการตามระยะบนหน้าจอ ตัวเลขคือจำนวนโครงการตามตัวกรอง สีใช้สัญญาณที่ต้องติดตามก่อน: เร่งด่วน → เฝ้าระวัง → ข้อมูลไม่พอ → ไม่พบสัญญาณสูง สถานีตรวจวัดแสดงแยกต่างหาก</p>
+          <p>สี่เหลี่ยม DWR ใช้เกณฑ์เตือนภัยของกรมทรัพยากรน้ำ สีฟ้าหมายถึงมีฝน สีเทาอาจไม่มีคำเตือน ข้อมูลเก่า หรือไม่ทราบสถานะ ไม่ใช่การรับรองความปลอดภัย · DWR เป็นข้อมูลประกอบและไม่เปลี่ยนสีคัดกรองโครงการ</p>
           <button onClick={() => setHelp(false)}>เข้าใจแล้ว</button>
         </div>
       )}

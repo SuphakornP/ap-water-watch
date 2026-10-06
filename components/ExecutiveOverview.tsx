@@ -1,12 +1,13 @@
 "use client";
 import { useState } from "react";
 import { ArrowRight, MapPin, Search } from "lucide-react";
-import type { Assessment } from "@/lib/flood-types";
+import type { Assessment, Feed } from "@/lib/flood-types";
 import { RISK_LABEL } from "@/lib/flood-types";
 import { projectDecision } from "@/lib/project-decision";
 import ProjectDecision from "./ProjectDecision";
+import DwrSourcePanel from "./DwrSourcePanel";
 
-export default function ExecutiveOverview({ items, selectedId, loading, onFocus, onDetail, onMap }: { items: Assessment[]; selectedId: string | null; loading: boolean; onFocus: (id: string) => void; onDetail: (id: string) => void; onMap: (id: string) => void }) {
+export default function ExecutiveOverview({ items, selectedId, loading, onFocus, onDetail, onMap, feed, radius, now }: { items: Assessment[]; selectedId: string | null; loading: boolean; onFocus: (id: string) => void; onDetail: (id: string) => void; onMap: (id: string) => void; feed: Feed; radius: number; now: number }) {
   const [limit, setLimit] = useState(8);
   const active = items.find(a => a.project.id === selectedId) ?? items[0];
   if (loading) return <div className="executive-empty" role="status">กำลังประเมินข้อมูลน้ำและฝนรอบโครงการ…</div>;
@@ -28,6 +29,7 @@ export default function ExecutiveOverview({ items, selectedId, loading, onFocus,
     <section className="executive-inspector" id="executive-decision" aria-label="ผลกระทบและการเตรียมพร้อม">
       <header><div><span className="eyebrow">PROJECT / DECISION</span><h2>{active.project.name}</h2><p>{active.project.province ?? "ยังไม่ระบุจังหวัด"} · {active.project.code}</p></div><button onClick={() => onMap(active.project.id)} aria-label={`ดู ${active.project.name} บนแผนที่`}><MapPin size={18} />แผนที่</button></header>
       <ProjectDecision assessment={active} compact />
+      <DwrSourcePanel feed={feed} project={active.project} radius={radius} now={now} />
       <button className="decision-detail-button" onClick={() => onDetail(active.project.id)}>เปิดหลักฐานและ Checklist ของโครงการ <ArrowRight size={18} /></button>
     </section>
   </div>;

@@ -270,7 +270,7 @@ export default function DecisionShare(props: DecisionShareProps) {
                     <strong>{project.name} · {RISK_LABEL[project.risk]}</strong>
                     <p>{project.province} · รหัส {project.code}</p><p>{project.why}</p><p>{project.confidence}</p>
                     {project.metrics.map((metric) => <p key={metric.id}>{metric.label}: {metric.displayValue} {metric.unit} · {metric.context}</p>)}
-                    <p>{project.impact}</p><ol>{project.actions.map((action) => <li key={action}>{action}</li>)}</ol><p>{project.evidence}</p>
+                    <p>{project.impact}</p><ol>{project.actions.map((action) => <li key={action}>{action}</li>)}</ol><p>{project.evidence}</p>{project.dwrEvidence.map((evidence) => <p key={evidence}>{evidence}</p>)}
                   </article>)}
                   <p>{preview.snapshot.nextReview}</p><p>{SNAPSHOT_LIMITATION}</p><p>{SNAPSHOT_FORECAST}</p><p>{preview.snapshot.sources}</p>
                 </details>

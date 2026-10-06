@@ -61,7 +61,8 @@ export function normalizeStations(
   for (const raw of root.data) {
     const item = object(raw),
       station = object(item.station),
-      geo = object(item.geocode);
+      geo = object(item.geocode),
+      agency = object(item.agency);
     const lat = numberValue(station.tele_station_lat),
       lng = numberValue(station.tele_station_long);
     if (
@@ -75,6 +76,8 @@ export function normalizeStations(
       continue;
     const code =
       text(station.id) || text(station.tele_station_oldcode) || `${lat},${lng}`;
+    const providerCode = text(object(agency.agency_shortname).en).toUpperCase();
+    const providerStationCode = text(station.tele_station_oldcode);
     const rawStatus = numberValue(item.situation_level),
       status =
         rawStatus !== null &&
@@ -106,7 +109,9 @@ export function normalizeStations(
       observedAt: timestamp(
         kind === "water" ? item.waterlevel_datetime : item.rainfall_datetime,
       ),
-      source: localized(object(item.agency).agency_shortname) || "ThaiWater",
+      source: localized(agency.agency_shortname) || "ThaiWater",
+      ...(providerCode ? { providerCode } : {}),
+      ...(providerStationCode ? { providerStationCode } : {}),
     };
     const existing = byId.get(entry.id);
     if (

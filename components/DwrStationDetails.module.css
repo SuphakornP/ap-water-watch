@@ -1,0 +1,66 @@
+.details {
+  color: var(--ink, #19354e);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.identity > span {
+  color: #506b81;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+
+.identity h3 {
+  margin: 6px 0;
+  font-size: 21px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.identity p, .identity small {
+  margin: 0;
+  color: #576f83;
+  font-size: 12px;
+}
+
+.status {
+  display: grid;
+  grid-template-columns: 9px 1fr;
+  align-items: center;
+  gap: 3px 8px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid;
+  border-left-width: 4px;
+  border-radius: 5px;
+  background: #ffffff;
+}
+
+.status i { width: 8px; height: 8px; }
+.status small { grid-column: 2; color: #5e7180; font-size: 11px; }
+.fresh, .stale { margin: 9px 0; font-size: 12px; }
+.fresh { color: #496575; }
+.stale { color: #885210; font-weight: 600; }
+
+.times { margin: 12px 0; padding-bottom: 12px; border-bottom: 1px solid #d9e3eb; }
+.times > div { display: flex; justify-content: space-between; gap: 12px; margin: 3px 0; font-size: 11px; }
+.times dt { color: #5a7081; }
+.times dd { margin: 0; text-align: right; }
+
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; margin: 15px 0; }
+.metrics > div { min-width: 0; padding-block: 8px; border-bottom: 1px solid #d9e3eb; }
+.metrics dt { font-size: 12px; color: #516c81; }
+.metrics dd { margin: 3px 0 0; font-size: 25px; font-weight: 600; color: #126580; }
+.metrics dd small { margin-left: 5px; font-size: 12px; font-weight: 400; }
+.metrics span { color: #7c684d; font-size: 11px; }
+
+.note, .datum { margin: 12px 0; font-size: 11px; color: #5b7183; }
+.datum { border-left: 3px solid #afbac5; padding-left: 10px; }
+.history { padding: 10px 0; border-bottom: 1px solid #d9e3eb; font-size: 12px; }
+.history summary { cursor: pointer; color: #295b78; }
+.history dl { margin: 8px 0; }
+.history dl > div { display: flex; justify-content: space-between; gap: 10px; }
+.history dd { margin: 0; }
+.history p { color: #816344; font-size: 11px; margin-bottom: 0; }
+.sourceLink { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; color: #0066ac; text-decoration: underline; text-underline-offset: 3px; }

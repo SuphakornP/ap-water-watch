@@ -1,3 +1,5 @@
+import type { DwrStation } from "./dwr-types";
+
 export type Risk = "priority" | "watch" | "normal" | "unknown";
 export interface Project {
   id: string;
@@ -26,6 +28,8 @@ export interface Station {
   status: number | null;
   observedAt: string | null;
   source: string;
+  providerCode?: string;
+  providerStationCode?: string;
 }
 export interface SourceHealth {
   id: string;
@@ -48,6 +52,7 @@ export interface Feed {
   sources: SourceHealth[];
   fetchedAt: string;
   warning: Warning | null;
+  dwr?: { stations: DwrStation[]; fetchedAt: string };
 }
 export interface NearbyStation extends Station {
   distance: number;

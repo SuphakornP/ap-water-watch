@@ -64,6 +64,7 @@ import NearbyCameras from "./NearbyCameras";
 import ExecutiveOverview from "./ExecutiveOverview";
 import ProjectDecision from "./ProjectDecision";
 import DecisionShare from "./DecisionShare";
+import DwrSourcePanel from "./DwrSourcePanel";
 import { projectDecision } from "@/lib/project-decision";
 import { readViewState, writeViewState } from "@/lib/view-state";
 import { useCameras } from "@/lib/use-cameras";
@@ -462,6 +463,11 @@ function Sources({
         )}
       </div>
       <div className="method-grid">
+        <article>
+          <h3>กรมทรัพยากรน้ำ · Early Warning</h3>
+          <p>รับข้อมูลตรงจาก DWR แยกฝน 15 นาที / 12 ชั่วโมง / รายวัน ณ 07:00 และระดับน้ำตามสถานีซึ่งยังไม่ยืนยันจุดอ้างอิง ไม่แทนค่าฝน 24 ชั่วโมงหรือระดับ ม.รทก.</p>
+          <p>สถานะเตือนของ DWR แสดงเป็นข้อมูลประกอบแยกจากสีโครงการ และจับคู่สถานีที่ส่งต่อผ่าน ThaiWater เพื่อไม่ให้นับเป็นหลักฐานอิสระซ้ำ</p>
+        </article>
         <article>
           <h3>ขอบเขตจังหวัด 77 แห่ง</h3>
           <p>ชั้นภูมิศาสตร์จาก Royal Thai Survey Department / OCHA / HDX ผ่าน prasertcbs/thailand_gis · ข้อมูลอ้างอิงปี 2565 แปลงเป็น GeoJSON สำหรับแสดงผล ไม่ใช่ขอบเขตน้ำท่วมหรือแนวเขตสำรวจล่าสุด</p>
@@ -898,7 +904,7 @@ export default function Dashboard() {
                     ? "รับข้อมูลล่าสุดไม่สำเร็จ"
                     : healthy === feed.sources.length && healthy > 0
                       ? "เชื่อมต่อข้อมูลเปิดแล้ว"
-                      : `แหล่งข้อมูลพร้อม ${healthy}/${feed.sources.length || 3}`}
+                      : `แหล่งข้อมูลพร้อม ${healthy}/${feed.sources.length || 4}`}
               </span>
               <small>
                 {feed.fetchedAt
@@ -1100,12 +1106,15 @@ export default function Dashboard() {
                     </TabsTrigger>
                   </TabsList>
                 </div>
-                <TabsContent value="executive"><ExecutiveOverview items={rows} selectedId={focusId} loading={loading && !feed.fetchedAt} onFocus={chooseProject} onDetail={selectProject} onMap={focusProject} /></TabsContent>
+                <TabsContent value="executive"><ExecutiveOverview items={rows} selectedId={focusId} loading={loading && !feed.fetchedAt} onFocus={chooseProject} onDetail={selectProject} onMap={focusProject} feed={feed} radius={Number(radius)} now={now} /></TabsContent>
                 <TabsContent value="map">
                   <Suspense fallback={<div className="executive-empty" role="status">กำลังเปิดแผนที่โครงการ…</div>}>
                   <FloodMap
+                    now={now}
                     items={rows}
                     stations={feed.stations}
+                    dwrStations={feed.dwr?.stations}
+                    sourceDwr={feed.sources.find(source => source.id === "dwr-ews")}
                     focusId={focusId}
                     manualFocusRequest={focusRequest}
                     onFocus={chooseProject}
@@ -1243,6 +1252,7 @@ export default function Dashboard() {
                   </button>
                 </div>
                 <NearbyCameras key={focused.project.id} projectName={focused.project.name} hasCoordinates={focused.project.lat !== null && focused.project.lng !== null} cameras={cameras} catalog={cameraData.catalog} loading={cameraData.loading} error={cameraData.error} radius={cameraRadius} onRadiusChange={(value) => { setCameraRadius(value); setCameraId(null); }} cameraId={activeCameraId} onSelect={selectCamera} onRefresh={() => void cameraData.refresh()} onMap={showCameraOnMap} onAction={() => scrollToSection("project-actions")} />
+                <DwrSourcePanel feed={feed} project={focused.project} radius={Number(radius)} now={now} />
                 <div id="project-actions"><Checklist
                   key={focused.project.id + focused.risk + String(detailOpen)}
                   assessment={focused}
@@ -1263,7 +1273,7 @@ export default function Dashboard() {
                 <Radio size={18} />
               </span>
               <span>
-                ข้อมูลเปิดจาก <b>ThaiWater</b> และ <b>กรมอุตุนิยมวิทยา</b>
+                ข้อมูลจาก <b>ThaiWater</b> · <b>กรมอุตุนิยมวิทยา</b> · <b>กรมทรัพยากรน้ำ</b>
                 <small>
                   ดึงข้อมูลทุก 5 นาทีขณะเปิดหน้า · ค่าที่เกิน 6
                   ชั่วโมงไม่ใช้จัดระดับ
@@ -1282,6 +1292,7 @@ export default function Dashboard() {
             loading={loading}
             onRefresh={() => void refresh()}
           />
+          <DwrSourcePanel feed={feed} now={now} />
         </TabsContent>
         <TabsContent value="guide">
           <Guide />
@@ -1307,6 +1318,7 @@ export default function Dashboard() {
             </SheetHeader>
             <div className="sheet-body">
               <ProjectDecision assessment={focused} compact />
+              <DwrSourcePanel feed={feed} project={focused.project} radius={Number(radius)} now={now} />
               <DecisionShare demo={releaseInfo.demo} items={[focused]} feed={feed} radius={Number(radius)} projectId={focused.project.id} scopeLabel={focused.project.name} />
               <Checklist key={focused.project.id + focused.risk + "detail"} assessment={focused} />
               <details className="station-technical"><summary>รายละเอียดโครงการและสถานีอ้างอิง</summary>

@@ -28,6 +28,54 @@ const feed = {
 };
 const assess = (stations, name = project.name) => assessProject({ ...project, name }, stations, 5, Date.parse(now));
 const snapshot = (items, options = {}) => createDecisionSnapshot({ items, feed, radius: 5, scopeLabel: "ทุกโครงการตามตัวกรอง", ...options }, now);
+const dwr = {
+  id: "dwr-STN001", code: "STN001", name: "สถานี DWR ทดสอบ", province: "ทดสอบ", district: "", subdistrict: "",
+  lat: 13.8, lng: 100.51, kind: "water", reportAt: "2026-10-06T05:50:00Z", reportTimeKind: "warning",
+  alertStatus: 3, alertIssuedAt: "2026-10-06T05:50:00Z", warningType: "rain",
+  rain15m: 12.3, rain12h: 45.6, rainDaily07: 78.9, waterLevel: 1.23, sourceUrl: "https://ews.dwr.go.th/ews/index.php",
+};
+
+test("DWR exports preserve periods and warning context without changing project risk or confidence", () => {
+  const item = assess([water, rain]);
+  const original = snapshot([item]);
+  const report = snapshot([item], { mode: "project", projectId: project.id, feed: { ...feed, dwr: { stations: [dwr], fetchedAt: now } } });
+  assert.equal(report.projects[0].risk, original.projects[0].risk);
+  assert.equal(report.projects[0].confidence, original.projects[0].confidence);
+  assert.deepEqual(report.projects[0].metrics, original.projects[0].metrics);
+  const drawing = drawDecisionSnapshot(report, (value, size) => [...value].length * size * 0.45);
+  const imageText = drawing.commands.filter((command) => command.kind === "text").map((command) => command.value).join(" ");
+  for (const output of [snapshotPrintHtml(report), imageText]) {
+    for (const phrase of ["ฝน 15 นาที 12.3", "ฝน 12 ชม. 45.6", "ฝนรายวัน ณ 07:00 78.9", "ยังไม่ยืนยันจุดอ้างอิง", "ค่าประกอบรายงานเตือน", "หลักฐานอิสระซ้ำ"]) {
+      assert.ok(output.replaceAll(/\s/g, "").includes(phrase.replaceAll(/\s/g, "")), phrase);
+    }
+  }
+});
+
+test("DWR stale readings, missing coverage and failed collection stay distinct in exports", () => {
+  const item = assess([water, rain]);
+  const stale = snapshot([item], { feed: { ...feed, dwr: { stations: [{ ...dwr, reportAt: "2026-10-05T05:50:00Z", name: "<img src=x>" }], fetchedAt: now } } });
+  const html = snapshotPrintHtml(stale);
+  assert.match(html, /ข้อมูลเก่า/);
+  assert.ok(!html.includes("12.3"));
+  assert.ok(!html.includes("45.6"));
+  assert.ok(!html.includes("<img src=x>"));
+  assert.ok(html.includes("&lt;img src=x&gt;"));
+  const absent = snapshot([item], { feed: { ...feed, dwr: { stations: [{ ...dwr, lat: 18 }], fetchedAt: now } } });
+  assert.match(absent.projects[0].dwrEvidence[0], /ไม่พบสถานี/);
+  assert.match(absent.projects[0].dwrEvidence[0], /ไม่ใช่การยืนยันความปลอดภัย/);
+  const failed = snapshot([item], { feed: { ...feed, sources: [{ id: "dwr-ews", name: "DWR", state: "error", count: 0, fetchedAt: now }] } });
+  assert.match(failed.projects[0].dwrEvidence[0], /เชื่อมต่อข้อมูลไม่ได้/);
+  assert.ok(!failed.projects[0].dwrEvidence[0].includes("ไม่พบสถานี"));
+});
+
+test("DWR exports disclose warnings beyond the three nearest detailed stations", () => {
+  const stations = [0, 1, 2, 3].map((index) => ({ ...dwr, id: `dwr-${index}`, code: `STN000${index}`, name: `สถานี ${index}`, lng: 100.501 + index / 1000, alertStatus: index === 3 ? 3 : 0 }));
+  const report = snapshot([assess([water, rain])], { feed: { ...feed, dwr: { stations, fetchedAt: now } } });
+  assert.match(report.projects[0].dwrEvidence[0], /มี 4 สถานี/);
+  assert.match(report.projects[0].dwrEvidence[0], /1 สถานะเตือน/);
+  assert.match(report.projects[0].dwrEvidence[0], /3 สถานีใกล้ที่สุด/);
+  assert.match(snapshotPrintHtml(report), /ตรวจสถานีที่เหลือบนแผนที่/);
+});
 
 test("export keeps complete filtered totals while showing the five highest priorities", () => {
   const items = [

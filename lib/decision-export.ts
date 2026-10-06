@@ -1,6 +1,7 @@
 import { assessProject, bankMargin } from "./assessment.ts";
 import { RISK_COLOR, RISK_LABEL, RISK_ORDER, type Assessment, type Feed, type Risk } from "./flood-types.ts";
 import { projectDecision, type DecisionEvidence } from "./project-decision.ts";
+import { dwrStatusLabel, nearbyDwrStations } from "./dwr-context.ts";
 
 export type SnapshotMode = "project" | "portfolio";
 export interface SnapshotMetric {
@@ -31,6 +32,7 @@ export interface SnapshotProject {
   actions: string[];
   evidence: string;
   metrics: SnapshotMetric[];
+  dwrEvidence: string[];
 }
 export interface DecisionSnapshot {
   mode: SnapshotMode;
@@ -107,6 +109,24 @@ function metricProvenance(metric: SnapshotMetric): string {
     : "ไม่มีค่าที่ใช้ประเมินได้";
 }
 
+function dwrEvidence(item: Assessment, feed: Feed, radius: number, now: string): string[] {
+  if (!feed.dwr) return feed.sources.some(source => source.id === "dwr-ews") ? ["DWR: เชื่อมต่อข้อมูลไม่ได้ในรอบนี้ ยังสรุปสถานะจากแหล่งนี้ไม่ได้"] : [];
+  if (item.project.lat === null || item.project.lng === null) return ["DWR: โครงการไม่มีพิกัดสำหรับจับคู่สถานี ยังสรุปข้อมูลใกล้โครงการไม่ได้"];
+  const nearby = nearbyDwrStations(item.project, feed.dwr.stations, radius, Date.parse(now));
+  if (!nearby.length) return [`DWR: ไม่พบสถานีในรัศมี ${radius} กม. · ไม่ใช่การยืนยันความปลอดภัย`];
+  const currentWarnings = nearby.filter(station => station.fresh && [1, 2, 3].includes(station.alertStatus ?? -1)).length;
+  const coverage = `DWR ในระยะ ${radius} กม. มี ${nearby.length} สถานี · ${currentWarnings} สถานะเตือนที่รายงานไม่เกิน 6 ชม.${nearby.length > 3 ? " · แสดงรายละเอียด 3 สถานีใกล้ที่สุด ตรวจสถานีที่เหลือบนแผนที่" : ""}`;
+  return [coverage, ...nearby.slice(0, 3).map(station => {
+    const readings = station.fresh ? [
+      station.rain15m !== null ? `ฝน 15 นาที ${station.rain15m.toFixed(1)} มม.` : "",
+      station.rain12h !== null ? `ฝน 12 ชม. ${station.rain12h.toFixed(1)} มม.` : "",
+      station.rainDaily07 !== null ? `ฝนรายวัน ณ 07:00 ${station.rainDaily07.toFixed(1)} มม.` : "",
+      station.waterLevel !== null ? `ระดับน้ำ ${station.waterLevel.toFixed(2)} ม. (ยังไม่ยืนยันจุดอ้างอิง ไม่ใช่ ม.รทก.)` : "",
+    ].filter(Boolean).join(" · ") : "ข้อมูลเก่าหรือไม่ทราบเวลา ไม่แสดงเป็นค่าปัจจุบัน";
+    return `DWR ${station.code} ${station.name} · ${station.distance.toFixed(1)} กม. · ${dwrStatusLabel(station.alertStatus, station.fresh)} · ${station.reportTimeKind === "warning" ? "ค่าประกอบรายงานเตือน" : "รายงาน"} ${snapshotTime(station.reportAt)} · ${readings}`;
+  }), "สถานะ DWR เป็นข้อมูลประกอบ ใช้เกณฑ์ต่างจากสีโครงการ และไม่นับสถานีเดียวกับ ThaiWater เป็นหลักฐานอิสระซ้ำ"];
+}
+
 export function createDecisionSnapshot({ items, feed, radius, scopeLabel, demo = false, mode = "portfolio", projectId }: {
   items: Assessment[]; feed: Feed; radius: number; scopeLabel: string; demo?: boolean; mode?: SnapshotMode; projectId?: string;
 }, now = new Date().toISOString()): DecisionSnapshot {
@@ -128,6 +148,7 @@ export function createDecisionSnapshot({ items, feed, radius, scopeLabel, demo =
       id: item.project.id, name: item.project.name, code: item.project.code, province: item.project.province,
       risk: item.risk, headline: decision.headline, confidence: decision.confidenceLabel,
       why: decision.why, impact: decision.impact, action: decision.action, actions: [...actions[item.risk]], metrics,
+      dwrEvidence: dwrEvidence(item, feed, radius, now),
       evidence: metrics.map((metric) => `${metric.label}: ${metricProvenance(metric)}`).join(" / "),
     };
   });
@@ -245,6 +266,11 @@ export function drawDecisionSnapshot(snapshot: DecisionSnapshot, measure: Measur
     y = metricsBottom + 24;
     text("ผลต่อโครงการ · ต้องยืนยันหน้างาน", 24, INK, 700);
     text(project.impact, 22);
+    if (project.dwrEvidence.length) {
+      gap(12);
+      text("ข้อมูลประกอบจากกรมทรัพยากรน้ำ", 20, INK, 600);
+      for (const evidence of project.dwrEvidence) text(evidence, 17, DIM);
+    }
     gap(22);
     rule();
     text("สิ่งที่ทีมโครงการควรทำต่อ", 27, INK, 700);
@@ -284,6 +310,7 @@ export function drawDecisionSnapshot(snapshot: DecisionSnapshot, measure: Measur
       text(`ทำต่อ · ${project.actions[0]}`, 20, INK, 600);
       for (const metric of project.metrics.filter((entry) => entry.stationName)) text(`${metric.label}: ${metricProvenance(metric)}`, 15, DIM);
       if (observed.length < 3) text("ข้อมูลบางส่วนขาดหายหรือเวลาไม่ผ่านเกณฑ์ ต้องยืนยันหน้างาน", 16, DIM);
+      for (const evidence of project.dwrEvidence) text(evidence, 15, DIM);
       gap(16);
     }
   }
@@ -315,7 +342,7 @@ export function snapshotPrintHtml(snapshot: DecisionSnapshot): string {
   const project = snapshot.mode === "project" ? snapshot.projects[0] : undefined;
   if (snapshot.mode === "project" && !project) throw new Error("ไม่มีข้อมูลโครงการในภาพสรุป");
   const body = project
-    ? `<p class="meta">สรุปติดตามรายโครงการ</p><h1>${escape(project.name)}</h1><p class="meta">${escape([project.province, project.code ? `รหัส ${project.code}` : null].filter(Boolean).join(" · "))}</p><section class="risk" style="background:${riskTint[project.risk]};border-color:${RISK_COLOR[project.risk]}"><small>สถานะการคัดกรองจากข้อมูลโดยรอบ</small><h2 style="color:${RISK_COLOR[project.risk]}">${RISK_LABEL[project.risk]}</h2><p>${escape(project.why)}</p><small>${escape(project.confidence)}</small></section><h2>ค่าที่ใช้ติดตามขณะนี้</h2><div class="metrics">${project.metrics.map(metricHtml).join("")}</div><h2>ผลต่อโครงการ · ต้องยืนยันหน้างาน</h2><p>${escape(project.impact)}</p><h2>สิ่งที่ทีมโครงการควรทำต่อ</h2><ol>${project.actions.map((action) => `<li>${escape(action)}</li>`).join("")}</ol>`
-    : `<h1>ภาพรวมโครงการที่ต้องติดตาม</h1><p>${escape(snapshot.scope)}</p><h2>${snapshot.total} โครงการตามตัวกรอง</h2><div class="counts">${(["priority", "watch", "normal", "unknown"] as const).map((risk) => `<div><b style="color:${RISK_COLOR[risk]}">${snapshot.counts[risk]}</b><span>${RISK_LABEL[risk]}</span></div>`).join("")}</div><p class="meta">${snapshot.total > snapshot.projects.length ? `แสดง ${snapshot.projects.length} โครงการแรกตามลำดับที่ควรตรวจสอบ` : "ลำดับโครงการที่ควรติดตาม"}</p>${snapshot.projects.map((item, index) => `<article><small style="color:${RISK_COLOR[item.risk]}">${index + 1}. ${RISK_LABEL[item.risk]}</small><h2>${escape(item.name)}</h2><p>${item.metrics.map((metric) => escape(`${metric.label}: ${metric.displayValue} ${metric.unit}`)).join(" · ")}</p><p><b>ทำต่อ · ${escape(item.actions[0])}</b></p><small>${escape(item.evidence)}</small></article>`).join("") || "<p>ไม่พบโครงการที่ตรงกับตัวกรอง</p>"}`;
+    ? `<p class="meta">สรุปติดตามรายโครงการ</p><h1>${escape(project.name)}</h1><p class="meta">${escape([project.province, project.code ? `รหัส ${project.code}` : null].filter(Boolean).join(" · "))}</p><section class="risk" style="background:${riskTint[project.risk]};border-color:${RISK_COLOR[project.risk]}"><small>สถานะการคัดกรองจากข้อมูลโดยรอบ</small><h2 style="color:${RISK_COLOR[project.risk]}">${RISK_LABEL[project.risk]}</h2><p>${escape(project.why)}</p><small>${escape(project.confidence)}</small></section><h2>ค่าที่ใช้ติดตามขณะนี้</h2><div class="metrics">${project.metrics.map(metricHtml).join("")}</div><h2>ผลต่อโครงการ · ต้องยืนยันหน้างาน</h2><p>${escape(project.impact)}</p>${project.dwrEvidence.length ? `<h2>ข้อมูลประกอบจากกรมทรัพยากรน้ำ</h2>${project.dwrEvidence.map((evidence) => `<p class="meta">${escape(evidence)}</p>`).join("")}` : ""}<h2>สิ่งที่ทีมโครงการควรทำต่อ</h2><ol>${project.actions.map((action) => `<li>${escape(action)}</li>`).join("")}</ol>`
+    : `<h1>ภาพรวมโครงการที่ต้องติดตาม</h1><p>${escape(snapshot.scope)}</p><h2>${snapshot.total} โครงการตามตัวกรอง</h2><div class="counts">${(["priority", "watch", "normal", "unknown"] as const).map((risk) => `<div><b style="color:${RISK_COLOR[risk]}">${snapshot.counts[risk]}</b><span>${RISK_LABEL[risk]}</span></div>`).join("")}</div><p class="meta">${snapshot.total > snapshot.projects.length ? `แสดง ${snapshot.projects.length} โครงการแรกตามลำดับที่ควรตรวจสอบ` : "ลำดับโครงการที่ควรติดตาม"}</p>${snapshot.projects.map((item, index) => `<article><small style="color:${RISK_COLOR[item.risk]}">${index + 1}. ${RISK_LABEL[item.risk]}</small><h2>${escape(item.name)}</h2><p>${item.metrics.map((metric) => escape(`${metric.label}: ${metric.displayValue} ${metric.unit}`)).join(" · ")}</p><p><b>ทำต่อ · ${escape(item.actions[0])}</b></p><small>${escape(item.evidence)}</small>${item.dwrEvidence.map((evidence) => `<p class="meta">${escape(evidence)}</p>`).join("")}</article>`).join("") || "<p>ไม่พบโครงการที่ตรงกับตัวกรอง</p>"}`;
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>AP Water Watch · ${escape(project?.name ?? "ภาพรวมโครงการ")}</title><style>@page{size:A4;margin:13mm}*{box-sizing:border-box}body{font-family:${SNAPSHOT_FONT_FAMILY};color:${INK};font-size:10pt;line-height:1.6;margin:0}h1{font-size:25pt;line-height:1.4;margin:4px 0 9px;overflow-wrap:anywhere}h2{font-size:14pt;margin:12px 0 5px}h3{font-size:10pt;margin:0 0 6px}p{margin:5px 0}.brand{color:#b82d3b;font-weight:700;letter-spacing:1px}.meta,small{color:${DIM};font-size:8pt}.risk{border-left:5px solid;padding:10px 14px;margin:16px 0}.risk h2{font-size:21pt;margin:3px 0}.metrics{display:flex;gap:10px;margin:10px 0 16px}.metric{flex:1;min-width:0;background:#f5f7f9;padding:12px;overflow-wrap:anywhere}.metric b{display:block;font-size:27pt;line-height:1.3}.metric strong{display:block;font-size:10pt}.metric p{font-size:8pt}.metric small{display:block;border-top:1px solid ${LINE};padding-top:8px;font-size:7.5pt}.counts{display:flex;gap:25px;margin:18px 0}.counts b{font-size:25pt}.counts span{display:block;font-size:8pt}article{break-inside:avoid;border-top:1px solid ${LINE};padding:10px 0}article h2{margin:3px 0}ol{padding-left:25px;margin:8px 0}li{padding:4px 0}footer{border-top:2px solid ${INK};padding-top:12px;margin-top:16px;font-size:8pt;break-inside:avoid}.review{font-size:10pt;font-weight:700}.demo{color:#b82d3b;font-weight:700}</style></head><body><p class="brand">AP WATER WATCH / ${snapshot.mode === "project" ? "PROJECT BRIEF" : "PORTFOLIO BRIEF"}</p>${snapshot.demo ? '<p class="demo">ข้อมูลสาธิตสำหรับทดสอบการแสดงผล ห้ามใช้ตัดสินใจสถานการณ์จริง</p>' : ""}<p class="meta">ภาพ ณ ${escape(snapshotTime(snapshot.generatedAt))} · รัศมีคัดกรอง ${snapshot.radius} กม.</p>${body}<footer><p class="review">${escape(snapshot.nextReview)}</p><p>ภาพนี้เป็นข้อมูล ณ เวลาส่งออก · ไม่มีการอัปเดตหรือแจ้งเตือนอัตโนมัติในภาพ</p><p><b>${SNAPSHOT_LIMITATION}</b></p><p>${SNAPSHOT_FORECAST}</p><p>ระบบดึงข้อมูล ${escape(snapshotTime(snapshot.fetchedAt))} · เวลาไทย (UTC+7)</p><p>${escape(snapshot.sources)}</p></footer></body></html>`;
 }

@@ -1,3 +1,26 @@
+.dwrKey {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  color: #496274;
+  font-size: 10px;
+}
+
+.dwrKey i {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border: 1px solid #20394e;
+  background: #698298;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.dwrLayerNote { line-height: 1.65; }
+.dwrInspector:global(.city-inspector) { overflow: auto; }
+.dwrClose { float: right; display: grid; place-items: center; width: 36px; height: 36px; position: relative; z-index: 1; }
+.dwrSourceError { color: #885210; font-size: 12px; margin: 0 0 12px; }
+
 .groupControl {
   pointer-events: auto;
   width: fit-content;
@@ -126,6 +149,8 @@
   .groupMembers {
     max-height: 340px;
   }
+
+  .dwrInspector:global(.city-inspector) { overflow: visible; }
 }
 
 @media (max-width: 760px) {
