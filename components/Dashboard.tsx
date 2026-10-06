@@ -65,6 +65,7 @@ import ExecutiveOverview from "./ExecutiveOverview";
 import ProjectDecision from "./ProjectDecision";
 import DecisionShare from "./DecisionShare";
 import DwrSourcePanel from "./DwrSourcePanel";
+import { GISTDA_CATALOG_URL, GISTDA_SOURCE_URL } from "@/lib/gistda";
 import { projectDecision } from "@/lib/project-decision";
 import { readViewState, writeViewState } from "@/lib/view-state";
 import { useCameras } from "@/lib/use-cameras";
@@ -463,6 +464,13 @@ function Sources({
         )}
       </div>
       <div className="method-grid">
+        <article>
+          <h3>พื้นที่น้ำท่วมในรอบ 7 วัน · GISTDA</h3>
+          <p>เปิดชั้นภาพดาวเทียมในมุมมองแผนที่เพื่อดูพื้นที่ตรวจพบน้ำท่วมย้อนหลัง 7 วัน ผ่านบริการภาพเดียวกับ ThaiWater และปรับความทึบเพื่อเทียบกับตำแหน่งโครงการได้</p>
+          <p>ต้นทางไม่ส่งวันที่สำรวจหรือวิเคราะห์ล่าสุด และอาจเก็บภาพในแคชได้นาน 24 ชั่วโมง เวลาโหลดจึงไม่ใช่เวลาที่ดาวเทียมสำรวจ ไม่ใช่ภาพสถานการณ์ขณะนี้หรือพยากรณ์ล่วงหน้า</p>
+          <p>บริเวณที่ไม่มีสีไม่ยืนยันว่าไม่มีน้ำท่วม ภาพนี้ยังไม่ใช้คำนวณพื้นที่ซ้อนทับกับขอบเขตโครงการหรือเปลี่ยนสีคัดกรองอัตโนมัติ</p>
+          <p><a href={GISTDA_CATALOG_URL} target="_blank" rel="noreferrer">ชุดข้อมูล GISTDA</a> · <a href={GISTDA_SOURCE_URL} target="_blank" rel="noreferrer">ดูบน ThaiWater</a></p>
+        </article>
         <article>
           <h3>กรมทรัพยากรน้ำ · Early Warning</h3>
           <p>รับข้อมูลตรงจาก DWR แยกฝน 15 นาที / 12 ชั่วโมง / รายวัน ณ 07:00 และระดับน้ำตามสถานีซึ่งยังไม่ยืนยันจุดอ้างอิง ไม่แทนค่าฝน 24 ชั่วโมงหรือระดับ ม.รทก.</p>
@@ -1275,7 +1283,7 @@ export default function Dashboard() {
               <span>
                 ข้อมูลจาก <b>ThaiWater</b> · <b>กรมอุตุนิยมวิทยา</b> · <b>กรมทรัพยากรน้ำ</b>
                 <small>
-                  ดึงข้อมูลทุก 5 นาทีขณะเปิดหน้า · ค่าที่เกิน 6
+                  ดึงข้อมูลสถานีทุก 5 นาทีขณะเปิดหน้า · ค่าที่เกิน 6
                   ชั่วโมงไม่ใช้จัดระดับ
                 </small>
               </span>

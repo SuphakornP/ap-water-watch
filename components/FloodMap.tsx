@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Map as CityMap, GeoJSONSource, MapMouseEvent, ExpressionSpecification } from "maplibre-gl";
+import type { Map as CityMap, GeoJSONSource, MapMouseEvent, MapSourceDataEvent, ErrorEvent as MapErrorEvent, ExpressionSpecification } from "maplibre-gl";
 import type { FeatureCollection, LineString } from "geojson";
 import {
   Building2,
@@ -26,6 +26,7 @@ import {
   Info,
   Camera,
   RadioTower,
+  Satellite,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cityStyle } from "@/lib/city-style";
@@ -38,6 +39,7 @@ import ProvinceRiskOverview from "./ProvinceRiskOverview";
 import DwrStationDetails from "./DwrStationDetails";
 import { dwrStatusColor, dwrStatusLabel } from "@/lib/dwr-context";
 import type { DwrStation } from "@/lib/dwr-types";
+import { GISTDA_ATTRIBUTION, GISTDA_CATALOG_URL, GISTDA_LAYER_ID, GISTDA_SOURCE_ID, GISTDA_SOURCE_URL, GISTDA_TILE_TEMPLATE } from "@/lib/gistda";
 import styles from "./FloodMap.module.css";
 import provinceIndex from "@/data/province-index.json";
 import {
@@ -85,6 +87,14 @@ const clusterColor: ExpressionSpecification = [
   [">", ["get", "unknown"], 0], RISK_COLOR.unknown, RISK_COLOR.normal,
 ];
 const clusterRadius: ExpressionSpecification = ["step", ["get", "point_count"], 21, 10, 25, 50, 30];
+type FloodLayerState = "off" | "loading" | "ready" | "error" | "outside";
+const floodLayerMessage: Record<FloodLayerState, string> = {
+  off: "ภาพดาวเทียมย้อนหลัง · ไม่ใช่พยากรณ์",
+  loading: "กำลังโหลดภาพในมุมมอง…",
+  ready: "โหลดภาพในมุมมองแล้ว",
+  error: "ภาพโหลดไม่ครบ · ยังสรุปพื้นที่ไม่ได้",
+  outside: "มุมมองนี้อยู่นอกขอบเขตชั้นข้อมูล",
+};
 const clock = (s: string | null) =>
   s
     ? new Intl.DateTimeFormat("th-TH", {
@@ -139,6 +149,10 @@ export default function FloodMap({
   const [grouped, setGrouped] = useState(true);
   const [dwrVisible, setDwrVisible] = useState(true);
   const [dwrId, setDwrId] = useState<string | null>(null);
+  const [floodVisible, setFloodVisible] = useState(false);
+  const [floodOpacity, setFloodOpacity] = useState(0.65);
+  const [floodState, setFloodState] = useState<FloodLayerState>("off");
+  const [floodRetry, setFloodRetry] = useState(0);
   const [groupIds, setGroupIds] = useState<string[] | null>(null);
   const [groupLoading, setGroupLoading] = useState(false);
   const [groupError, setGroupError] = useState("");
@@ -158,6 +172,14 @@ export default function FloodMap({
     setGroupIds(null);
     setGroupLoading(false);
     setGroupError("");
+  }
+  function showFloodExtent(enabled: boolean) {
+    setFloodVisible(enabled);
+    setFloodState(enabled ? "loading" : "off");
+  }
+  function retryFloodExtent() {
+    setFloodState("loading");
+    setFloodRetry(value => value + 1);
   }
   // Cancel the external map worker selection when its filter or focus context changes.
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -238,6 +260,7 @@ export default function FloodMap({
           "bottom-left",
         );
         m.on("error", (e) => {
+          if ("sourceId" in e && e.sourceId === GISTDA_SOURCE_ID) return;
           console.error("City map source error", e.error);
           setError("บางส่วนของแผนที่โหลดไม่สำเร็จ ลองโหลดแผนที่ใหม่");
         });
@@ -590,6 +613,62 @@ export default function FloodMap({
   }, []);
   useEffect(() => {
     const m = map.current;
+    if (!ready || !m || !floodVisible) return;
+    let disposed = false;
+    let failed = false;
+    let receivedTile = false;
+    function inCoverage() {
+      const bounds = m!.getBounds();
+      return bounds.getWest() <= 106 && bounds.getEast() >= 97 && bounds.getSouth() <= 21 && bounds.getNorth() >= 5;
+    }
+    function onLoading(event: MapSourceDataEvent) {
+      if (!disposed && !failed && event.sourceId === GISTDA_SOURCE_ID) setFloodState("loading");
+    }
+    function updateStatus() {
+      if (disposed || failed || !m!.getSource(GISTDA_SOURCE_ID)) return;
+      if (!inCoverage()) setFloodState("outside");
+      else if (receivedTile && m!.isSourceLoaded(GISTDA_SOURCE_ID)) setFloodState("ready");
+    }
+    function onData(event: MapSourceDataEvent) {
+      if (disposed || event.sourceId !== GISTDA_SOURCE_ID) return;
+      if (event.tile?.state === "loaded") receivedTile = true;
+      updateStatus();
+    }
+    function onError(event: MapErrorEvent) {
+      if (disposed || !("sourceId" in event) || event.sourceId !== GISTDA_SOURCE_ID) return;
+      failed = true;
+      console.error("GISTDA flood imagery could not be loaded", event.error);
+      setFloodState("error");
+    }
+    m.on("sourcedataloading", onLoading);
+    m.on("sourcedata", onData);
+    m.on("error", onError);
+    m.on("moveend", updateStatus);
+    m.addSource(GISTDA_SOURCE_ID, {
+      type: "raster", tiles: [GISTDA_TILE_TEMPLATE], tileSize: 256,
+      minzoom: 0, maxzoom: 14, bounds: [97, 5, 106, 21], attribution: GISTDA_ATTRIBUTION,
+    });
+    m.addLayer({
+      id: GISTDA_LAYER_ID, type: "raster", source: GISTDA_SOURCE_ID,
+      paint: { "raster-opacity": 0.65, "raster-fade-duration": 0 },
+    }, "road-casing");
+    return () => {
+      disposed = true;
+      m.off("sourcedataloading", onLoading);
+      m.off("sourcedata", onData);
+      m.off("error", onError);
+      m.off("moveend", updateStatus);
+      if (map.current !== m) return;
+      if (m.getLayer(GISTDA_LAYER_ID)) m.removeLayer(GISTDA_LAYER_ID);
+      if (m.getSource(GISTDA_SOURCE_ID)) m.removeSource(GISTDA_SOURCE_ID);
+    };
+  }, [floodVisible, floodRetry, ready]);
+  useEffect(() => {
+    const m = map.current;
+    if (ready && m?.getLayer(GISTDA_LAYER_ID)) m.setPaintProperty(GISTDA_LAYER_ID, "raster-opacity", floodOpacity);
+  }, [floodOpacity, floodVisible, floodRetry, ready]);
+  useEffect(() => {
+    const m = map.current;
     if (!ready || !m || !sceneReady.current) return;
     // New source data invalidates pending worker replies, while open member lists use current assessments.
     groupRequest.current++;
@@ -924,6 +1003,17 @@ export default function FloodMap({
           <small>{grouped ? "ตัวเลข = จำนวนโครงการ · คลิกเพื่อแยกดู" : "แสดงหมุดรายโครงการ"}</small>
           {items.length > mappedFeatures.features.length && <small>{items.length - mappedFeatures.features.length} โครงการไม่มีพิกัด · ดูในรายการ</small>}
         </div>
+        <div className={`${styles.floodControl} ${floodVisible ? styles.floodActive : ""}`}>
+          <label>
+            <span><Satellite size={14} />พื้นที่น้ำท่วมในรอบ 7 วัน<small>(GISTDA)</small></span>
+            <Switch checked={floodVisible} disabled={!ready} onCheckedChange={showFloodExtent} aria-label="พื้นที่น้ำท่วมในรอบ 7 วัน (GISTDA)" />
+          </label>
+          <p role="status" className={floodState === "error" ? styles.floodError : ""}>{floodLayerMessage[floodState]}</p>
+          {floodVisible && <>
+            <small className={styles.floodDate}><i />ไม่ทราบวันที่ถ่ายภาพ · ไม่ใช่น้ำปัจจุบัน</small>
+            {floodState === "error" && <button className={styles.floodRetry} onClick={retryFloodExtent}>ลองโหลดชั้นข้อมูลอีกครั้ง</button>}
+          </>}
+        </div>
       </div>
       <div className="city-toolbar">
         <button
@@ -963,6 +1053,19 @@ export default function FloodMap({
       {layersOpen && (
         <div className="city-layers glass-panel">
           <b>เลือกสิ่งที่อยากเห็น</b>
+          <section className={styles.floodSettings} aria-label="รายละเอียดชั้นพื้นที่น้ำท่วม GISTDA">
+            <label><Satellite size={17} /><span>พื้นที่น้ำท่วมในรอบ 7 วัน<br />(GISTDA)</span><Switch checked={floodVisible} disabled={!ready} onCheckedChange={showFloodExtent} aria-label="เปิดชั้นพื้นที่น้ำท่วม GISTDA" /></label>
+            {floodVisible && <>
+              <label className={styles.opacityLabel} htmlFor="flood-opacity">ความทึบของภาพ <b>{Math.round(floodOpacity * 100)}%</b></label>
+              <input id="flood-opacity" className={styles.opacitySlider} type="range" min="30" max="90" step="5" value={Math.round(floodOpacity * 100)} onChange={event => setFloodOpacity(Number(event.target.value) / 100)} aria-label="ความทึบพื้นที่น้ำท่วม GISTDA" />
+              <p className={styles.floodSwatch}><i />พื้นที่น้ำท่วมที่ตรวจพบจากดาวเทียม</p>
+              <p role="status" className={floodState === "error" ? styles.floodError : ""}>{floodLayerMessage[floodState]}</p>
+              {floodState === "error" && <button className={styles.floodRetry} onClick={retryFloodExtent}>ลองโหลด GISTDA อีกครั้ง</button>}
+            </>}
+            <p>ภาพสะสมย้อนหลังตามชั้นข้อมูล 7 วันของต้นทาง ไม่ใช่พยากรณ์ และยังไม่ยืนยันวันที่ถ่ายภาพแต่ละพื้นที่</p>
+            <p>ภาพที่ส่งต่ออาจมีแคชนานถึง 24 ชม. · พื้นที่ไม่แสดงสีไม่ได้ยืนยันว่าไม่มีน้ำท่วม · ไม่ใช้เปลี่ยนระดับโครงการอัตโนมัติ</p>
+            <div className={styles.floodSources}><a href={GISTDA_SOURCE_URL} target="_blank" rel="noreferrer">ดูต้นทาง ThaiWater</a><a href={GISTDA_CATALOG_URL} target="_blank" rel="noreferrer">ข้อมูล GISTDA</a></div>
+          </section>
           <label><MapPin size={17} />ขอบเขตจังหวัด<Switch checked={boundaries} onCheckedChange={setBoundaries} aria-label="ขอบเขตจังหวัด" /></label>
           {boundaries && <div className="province-explorer">
             <label htmlFor="province-explorer">สำรวจจังหวัด</label>
@@ -1420,6 +1523,7 @@ export default function FloodMap({
           </p>
           <p>แสดงเป็นกลุ่มจะรวมเฉพาะโครงการตามระยะบนหน้าจอ ตัวเลขคือจำนวนโครงการตามตัวกรอง สีใช้สัญญาณที่ต้องติดตามก่อน: เร่งด่วน → เฝ้าระวัง → ข้อมูลไม่พอ → ไม่พบสัญญาณสูง สถานีตรวจวัดแสดงแยกต่างหาก</p>
           <p>สี่เหลี่ยม DWR ใช้เกณฑ์เตือนภัยของกรมทรัพยากรน้ำ สีฟ้าหมายถึงมีฝน สีเทาอาจไม่มีคำเตือน ข้อมูลเก่า หรือไม่ทราบสถานะ ไม่ใช่การรับรองความปลอดภัย · DWR เป็นข้อมูลประกอบและไม่เปลี่ยนสีคัดกรองโครงการ</p>
+          <p>พื้นที่สีฟ้าในชั้น GISTDA เป็นพื้นที่น้ำท่วมที่ตรวจพบจากภาพดาวเทียมย้อนหลังตามชั้นข้อมูล 7 วันของต้นทาง ไม่ใช่พยากรณ์ ไม่ใช่ความลึกน้ำ และไม่ยืนยันสถานการณ์ขณะนี้ · ยังไม่ทราบวันที่ถ่ายภาพแต่ละพื้นที่ พื้นที่ไม่แสดงสีอาจขาดการตรวจวัด</p>
           <button onClick={() => setHelp(false)}>เข้าใจแล้ว</button>
         </div>
       )}
