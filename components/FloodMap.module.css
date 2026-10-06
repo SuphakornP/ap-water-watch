@@ -1,3 +1,102 @@
+.groupControl {
+  pointer-events: auto;
+  width: fit-content;
+  margin-top: 13px;
+  padding: 9px 12px;
+  border: 1px solid #d3e0d9;
+  border-radius: 9px;
+  background: #fffefaee;
+  box-shadow: 0 3px 10px #233e3908;
+}
+
+.groupControl label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  color: #263f37;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.groupControl small {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: #526960;
+}
+
+.groupPanel:global(.city-inspector) {
+  width: 330px;
+  max-height: calc(100% - 185px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  z-index: 3;
+}
+
+.groupPanel h3 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.groupPanel h3:focus-visible {
+  outline: 2px solid #1769e0;
+  outline-offset: 4px;
+}
+
+.groupPanel .groupNote {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #536b61;
+}
+
+.groupCounts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  padding-block: 10px;
+  border-block: 1px solid #dce5de;
+}
+
+.groupCounts span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+}
+
+.groupCounts i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.groupCounts b {
+  font-size: 15px;
+}
+
+.groupMembers {
+  min-height: 80px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.groupMembers :global(.city-project) {
+  width: 100%;
+  min-height: 62px;
+  padding-inline: 0;
+  text-align: left;
+}
+
+.groupMembers :global(.city-project)[aria-pressed="true"] {
+  box-shadow: inset 3px 0 #1769e0;
+  padding-inline: 9px 0;
+}
+
 @media (max-width: 1100px) {
   /* Keep the risk legend above the expanded source attribution on narrow maps. */
   .frame:global(.city-frame) {
@@ -16,5 +115,31 @@
 
   .frame:global(.city-expanded) :global(.city-inspector) {
     margin-top: 600px;
+  }
+
+  .groupPanel:global(.city-inspector) {
+    width: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .groupMembers {
+    max-height: 340px;
+  }
+}
+
+@media (max-width: 760px) {
+  .groupControl {
+    padding: 8px 10px;
+    margin-top: 10px;
+  }
+
+  .groupControl label {
+    font-size: 13px;
+    gap: 12px;
+  }
+
+  .groupControl small {
+    font-size: 10px;
   }
 }

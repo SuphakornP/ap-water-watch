@@ -1055,7 +1055,7 @@ export default function Dashboard() {
               </button>
             )}
           </div>
-          <DecisionShare demo={releaseInfo.demo} items={rows} feed={feed} radius={Number(radius)} scopeLabel={[
+          <DecisionShare demo={releaseInfo.demo} items={rows} feed={feed} radius={Number(radius)} preferredProjectId={focusId ?? undefined} scopeLabel={[
             [region, province, brand].filter(v => v !== "all").join(" · ") || "ทุกพื้นที่",
             deferredSearch.trim() ? `ค้นหา: ${deferredSearch.trim()}` : "",
             risk === "all" ? "ทุกระดับ" : risk === "attention" ? "ต้องติดตาม" : RISK_LABEL[risk as Risk],

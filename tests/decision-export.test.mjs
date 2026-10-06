@@ -83,6 +83,120 @@ test("downloaded SVG and print HTML escape upstream names and preserve demo limi
     assert.match(output, /ข้อมูลสาธิต/);
     assert.match(output, /ห้ามใช้ตัดสินใจสถานการณ์จริง/);
   }
-  assert.equal(drawing.width, 1200);
+  assert.equal(drawing.width, 1080);
   assert.ok(drawing.commands.every((command) => command.y < drawing.height));
+});
+
+test("project mode exports the selected project beyond the portfolio top five without counts", () => {
+  const items = Array.from({ length: 7 }, (_, index) => assessProject(
+    { ...project, id: `project-${index}`, name: `โครงการ ${index}` },
+    index === 6 ? [water, rain] : [{ ...water, status: 5 }], 5, Date.parse(now),
+  ));
+  const report = snapshot(items, { mode: "project", projectId: "project-6" });
+  assert.equal(report.mode, "project");
+  assert.equal(report.total, 1);
+  assert.equal(report.projects.length, 1);
+  assert.equal(report.projects[0].id, "project-6");
+  assert.equal(report.projects[0].risk, "normal");
+  assert.equal(report.projects[0].actions.length, 3);
+  const html = snapshotPrintHtml(report);
+  assert.ok(!html.includes('<div class="counts">'));
+  assert.ok(!html.includes("โครงการ 0"));
+  const drawing = drawDecisionSnapshot(report, (value, size) => [...value].length * size * 0.45);
+  assert.ok(!drawing.commands.some((entry) => entry.kind === "text" && entry.value === "1 โครงการตามตัวกรอง"));
+  assert.throws(() => snapshot(items, { mode: "project", projectId: "missing" }), /ไม่พบโครงการ/);
+  assert.throws(() => snapshot(items, { mode: "project" }), /ไม่พบโครงการ/);
+});
+
+test("numeric water metrics preserve direction relative to a real bank datum and label MSL fallback", () => {
+  const metric = (station) => snapshot([assess([station, rain])]).projects[0].metrics[0];
+  const below = metric(water);
+  assert.equal(below.value, 2);
+  assert.equal(below.displayValue, "2.00");
+  assert.equal(below.unit, "ม. ต่ำกว่าตลิ่ง");
+  const above = metric({ ...water, value: 3.65, status: 5 });
+  assert.equal(above.value, -0.65);
+  assert.equal(above.displayValue, "0.65");
+  assert.equal(above.unit, "ม. สูงกว่าตลิ่ง");
+  assert.equal(metric({ ...water, value: 3 }).unit, "ม. เท่าระดับตลิ่ง");
+  for (const bank of [null, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const fallback = metric({ ...water, bank });
+    assert.equal(fallback.value, 1);
+    assert.equal(fallback.unit, "ม.รทก. (MSL)");
+    assert.match(fallback.context, /ไม่ใช่ความลึกน้ำท่วม/);
+  }
+});
+
+test("hourly and daily numbers each keep their selected station, time, distance and source", () => {
+  const hourly = { ...rain, id: "hourly", name: "สถานีรายชั่วโมง", source: "Hourly Agency", rain1h: 65.2, value: 10, observedAt: "2026-10-06T05:20:00Z" };
+  const daily = { ...rain, id: "daily", name: "สถานีรายวัน", source: "Daily Agency", rain1h: 1.5, value: 101.5, observedAt: "2026-10-06T05:40:00Z" };
+  const report = snapshot([assess([water, hourly, daily])]);
+  const metrics = report.projects[0].metrics;
+  assert.deepEqual(metrics.map((metric) => metric.value), [2, 65.2, 101.5]);
+  assert.deepEqual(metrics.slice(1).map((metric) => [metric.stationName, metric.observedAt, metric.source]), [
+    [hourly.name, hourly.observedAt, hourly.source], [daily.name, daily.observedAt, daily.source],
+  ]);
+  assert.ok(metrics.every((metric) => metric.distance > 0 && metric.distance <= 5));
+  const html = snapshotPrintHtml({ ...report, mode: "project" });
+  assert.match(html, /65\.2/);
+  assert.match(html, /101\.5/);
+  assert.match(html, /Hourly Agency/);
+  assert.match(html, /Daily Agency/);
+});
+
+test("partial rainfall never substitutes an hourly value for daily data or treats missing as zero", () => {
+  const report = snapshot([assess([water, { ...rain, rain1h: 28, value: null }])]);
+  const metrics = report.projects[0].metrics;
+  assert.equal(report.projects[0].risk, "watch");
+  assert.equal(metrics[1].value, 28);
+  assert.equal(metrics[2].value, null);
+  assert.equal(metrics[2].displayValue, "ไม่มีค่า");
+  assert.equal(metrics[2].state, "missing");
+  assert.match(report.projects[0].confidence, /บางส่วน/);
+});
+
+test("export rechecks freshness even when assessment was produced earlier", () => {
+  const items = [assess([{ ...water, status: 5 }, { ...rain, rain1h: 125.3, value: 190.7 }])];
+  const report = createDecisionSnapshot({ items, feed, radius: 5, scopeLabel: "ทดสอบ", mode: "project", projectId: project.id }, "2026-10-06T13:00:00Z");
+  assert.equal(items[0].risk, "priority");
+  assert.equal(report.projects[0].risk, "unknown");
+  assert.ok(report.projects[0].metrics.every((metric) => metric.state === "stale" && metric.value === null));
+  assert.ok(report.projects[0].metrics.every((metric) => metric.displayValue === "ใช้ไม่ได้"));
+  assert.ok(report.projects[0].metrics.every((metric) => metric.observedAt === water.observedAt));
+  const html = snapshotPrintHtml(report);
+  assert.ok(!html.includes("125.3"));
+  assert.ok(!html.includes("190.7"));
+  assert.match(html, /เวลาไม่ผ่านเกณฑ์/);
+  assert.match(html, /ไม่มีการอัปเดตหรือแจ้งเตือนอัตโนมัติในภาพ/);
+});
+
+test("long Thai names wrap intact, all drawing content stays within bounds, and export scopes remain distinct", () => {
+  const name = "โครงการสาธิตอรุณรุ่งโซนตะวันออก DEMO RESIDENCE โครงการทดสอบชื่อยาวสำหรับติดตามสถานการณ์";
+  const report = snapshot([assess([{ ...water, name: name + name }, rain], name)], { mode: "project", projectId: project.id });
+  const measure = (value, size) => [...new Intl.Segmenter("th", { granularity: "grapheme" }).segment(value)].length * size * 0.6;
+  const drawing = drawDecisionSnapshot(report, measure);
+  const nameLines = drawing.commands.filter((entry) => entry.kind === "text" && entry.size === 48);
+  assert.ok(nameLines.length > 1);
+  assert.equal(nameLines.map((entry) => entry.value).join("").replaceAll(" ", ""), name.replaceAll(" ", ""));
+  for (const command of drawing.commands) {
+    assert.ok(command.y >= 0 && command.y < drawing.height);
+    if (command.kind === "rect") {
+      assert.ok(command.x + command.width <= drawing.width);
+      assert.ok(command.y + command.height <= drawing.height);
+    } else assert.ok(command.x + measure(command.value, command.size) <= drawing.width - 30, command.value);
+  }
+  const portfolio = snapshot([], { scopeLabel: "นนทบุรี · เฝ้าระวัง", mode: "portfolio" });
+  assert.equal(portfolio.scope, "นนทบุรี · เฝ้าระวัง");
+  assert.match(snapshotPrintHtml(portfolio), /ไม่พบโครงการที่ตรงกับตัวกรอง/);
+  assert.match(snapshotPrintHtml(portfolio), /นนทบุรี · เฝ้าระวัง/);
+});
+
+test("long numerical measurements fit their card without splitting a number across lines", () => {
+  const report = snapshot([assess([{ ...water, value: 123456789.12, bank: null }, rain])], { mode: "project", projectId: project.id });
+  const measure = (value, size) => [...value].length * size * 0.6;
+  const drawing = drawDecisionSnapshot(report, measure);
+  const valueCommand = drawing.commands.find((entry) => entry.kind === "text" && entry.value === "123456789.12");
+  assert.ok(valueCommand, "the complete numeric value must stay on a single line");
+  assert.ok(valueCommand.size < 54);
+  assert.ok(measure(valueCommand.value, valueCommand.size) <= (1080 - 104 - 32) / 3 - 36 + 0.001);
 });

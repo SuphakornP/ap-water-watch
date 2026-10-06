@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Map as CityMap, GeoJSONSource, MapMouseEvent } from "maplibre-gl";
-import type { FeatureCollection, Point, LineString } from "geojson";
+import type { Map as CityMap, GeoJSONSource, MapMouseEvent, ExpressionSpecification } from "maplibre-gl";
+import type { FeatureCollection, LineString } from "geojson";
 import {
   Building2,
   ChevronLeft,
@@ -29,6 +29,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { cityStyle } from "@/lib/city-style";
 import { stationRisk, tourProjects } from "@/lib/map-signals";
+import { CLUSTER_RISKS, PROJECT_CLUSTER_PROPERTIES, clusterMembers, projectMapFeatures } from "@/lib/map-clusters";
 import { representativeWater, bankMargin, isFresh } from "@/lib/assessment";
 import { initialRainPeriod, representativeRain, mapPadding } from "@/lib/presentation";
 import WaterLevelGauge from "./WaterLevelGauge";
@@ -70,6 +71,12 @@ const initialCamera = {
   bearing: 0,
 };
 const empty: FeatureCollection = { type: "FeatureCollection", features: [] };
+const clusterColor: ExpressionSpecification = [
+  "case", [">", ["get", "priority"], 0], RISK_COLOR.priority,
+  [">", ["get", "watch"], 0], RISK_COLOR.watch,
+  [">", ["get", "unknown"], 0], RISK_COLOR.unknown, RISK_COLOR.normal,
+];
+const clusterRadius: ExpressionSpecification = ["step", ["get", "point_count"], 21, 10, 25, 50, 30];
 const clock = (s: string | null) =>
   s
     ? new Intl.DateTimeFormat("th-TH", {
@@ -118,10 +125,33 @@ export default function FloodMap({
   const [tour, setTour] = useState(false),
     [tourIndex, setTourIndex] = useState(0);
   const [zoom, setZoom] = useState(initialCamera.zoom);
-  const latest = useRef({ items, stations, onFocus, onProvinceSelect, onStationSelect, onCameraSelect });
+  const [grouped, setGrouped] = useState(true);
+  const [groupIds, setGroupIds] = useState<string[] | null>(null);
+  const [groupLoading, setGroupLoading] = useState(false);
+  const [groupError, setGroupError] = useState("");
+  const groupRequest = useRef(0);
+  const groupPending = useRef(false);
+  const groupTitle = useRef<HTMLHeadingElement>(null);
+  const mappedFeatures = useMemo(() => projectMapFeatures(items), [items]);
+  const mapMembership = mappedFeatures.features.map(feature => `${feature.properties?.id}:${feature.geometry.coordinates.join(",")}`).sort().join("|");
+  const group = useMemo(() => clusterMembers(items, groupIds ?? []), [items, groupIds]);
+  const latest = useRef({ items, stations, onFocus, onProvinceSelect, onStationSelect, onCameraSelect, reducedMotion });
   useEffect(() => {
-    latest.current = { items, stations, onFocus, onProvinceSelect, onStationSelect, onCameraSelect };
-  }, [items, stations, onFocus, onProvinceSelect, onStationSelect, onCameraSelect]);
+    latest.current = { items, stations, onFocus, onProvinceSelect, onStationSelect, onCameraSelect, reducedMotion };
+  }, [items, stations, onFocus, onProvinceSelect, onStationSelect, onCameraSelect, reducedMotion]);
+  function closeGroup() {
+    groupRequest.current++;
+    groupPending.current = false;
+    setGroupIds(null);
+    setGroupLoading(false);
+    setGroupError("");
+  }
+  // Cancel the external map worker selection when its filter or focus context changes.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { closeGroup(); }, [mapMembership, grouped, focusId, manualFocusRequest, cameraMapRequest]);
+  useEffect(() => {
+    if (groupIds) groupTitle.current?.focus({ preventScroll: true });
+  }, [groupIds]);
   function setStationId(id: string | null) { latest.current.onStationSelect(id); }
   const selected = items.find((a) => a.project.id === focusId);
   const chosenStation = stations.find((s) => s.id === stationId);
@@ -129,7 +159,7 @@ export default function FloodMap({
   const [showAllLinked, setShowAllLinked] = useState(false);
   useEffect(() => {
     setShowAllLinked(false);
-    if (stationId) setTour(false);
+    if (stationId) { setTour(false); closeGroup(); }
   }, [stationId]);
   const linkedProjects = chosenStation
     ? items.filter((a) => a.trigger?.id === chosenStation.id)
@@ -189,6 +219,11 @@ export default function FloodMap({
         m.on("load", () => {
           if (disposed) return;
           m.addSource("ap-projects", { type: "geojson", data: empty });
+          m.addSource("ap-project-clusters", {
+            type: "geojson", data: empty, cluster: true, clusterRadius: 52,
+            clusterMaxZoom: 18, maxzoom: 19, clusterProperties: PROJECT_CLUSTER_PROPERTIES,
+          });
+          m.addSource("ap-project-selection", { type: "geojson", data: empty });
           m.addSource("water-stations", { type: "geojson", data: empty });
           m.addSource("nearby-cameras", { type: "geojson", data: empty });
           m.addSource("station-link", { type: "geojson", data: empty });
@@ -243,8 +278,7 @@ export default function FloodMap({
           m.addLayer({
             id: "project-selection",
             type: "circle",
-            source: "ap-projects",
-            filter: ["==", ["get", "id"], ""],
+            source: "ap-project-selection",
             paint: { "circle-radius": 14, "circle-color": "transparent", "circle-stroke-color": "#1769e0", "circle-stroke-width": 3 },
           });
           m.addLayer({
@@ -289,6 +323,34 @@ export default function FloodMap({
               "text-halo-width": 2,
             },
           });
+          m.addLayer({
+            id: "project-clusters", type: "circle", source: "ap-project-clusters",
+            filter: ["has", "point_count"],
+            paint: { "circle-radius": clusterRadius, "circle-color": clusterColor, "circle-stroke-width": 3, "circle-stroke-color": "#fffdf6" },
+          });
+          m.addLayer({
+            id: "project-cluster-count", type: "symbol", source: "ap-project-clusters",
+            filter: ["has", "point_count"],
+            layout: { "text-field": ["to-string", ["get", "point_count"]], "text-font": ["Noto Sans Regular"], "text-size": 15, "text-allow-overlap": true, "text-ignore-placement": true },
+            paint: { "text-color": "#ffffff" },
+          });
+          m.addLayer({
+            id: "project-cluster-single", type: "circle", source: "ap-project-clusters",
+            filter: ["!", ["has", "point_count"]],
+            paint: { "circle-color": ["get", "color"], "circle-radius": 7, "circle-stroke-width": 2, "circle-stroke-color": "#fffdf6" },
+          });
+          m.addLayer({
+            id: "project-cluster-names", type: "symbol", source: "ap-project-clusters", minzoom: 13.6,
+            filter: ["!", ["has", "point_count"]],
+            layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"], "text-size": 11, "text-offset": [0, 1.8], "text-anchor": "top", "text-max-width": 16, "text-padding": 24 },
+            paint: { "text-color": "#42554e", "text-halo-color": "#fffef6", "text-halo-width": 2 },
+          });
+          m.moveLayer("project-selection");
+          m.addLayer({
+            id: "project-selection-center", type: "circle", source: "ap-project-selection",
+            paint: { "circle-color": ["get", "color"], "circle-radius": 7, "circle-stroke-width": 2, "circle-stroke-color": "#fffdf6" },
+          });
+          m.moveLayer("project-cluster-count");
           sceneReady.current = true;
           m.addLayer({
             id: "station-labels",
@@ -325,16 +387,49 @@ export default function FloodMap({
           m.addLayer({ id: "camera-label", type: "symbol", source: "nearby-cameras", filter: ["==", ["get", "id"], ""], layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"], "text-size": 12, "text-offset": [0, 2.2], "text-max-width": 18 }, paint: { "text-color": "#1769e0", "text-halo-color": "#fff", "text-halo-width": 2 } });
           setReady(true);
         });
-        m.on("click", (e: MapMouseEvent) => {
+        m.on("click", async (e: MapMouseEvent) => {
           if (!m.getLayer("project-dots")) return;
           const hits = m.queryRenderedFeatures(
             [
               [e.point.x - 12, e.point.y - 12],
               [e.point.x + 12, e.point.y + 48],
             ],
-            { layers: ["project-dots", "station-dots", "camera-points"] },
+            { layers: ["project-dots", "project-clusters", "project-cluster-single", "station-dots", "camera-points"] },
           );
-          const project = hits.find((h) => h.layer.id === "project-dots");
+          const cluster = hits.find(hit => hit.layer.id === "project-clusters");
+          if (cluster && cluster.geometry.type === "Point") {
+            closeGroup();
+            setTour(false);
+            setListOpen(false);
+            setLayersOpen(false);
+            groupPending.current = true;
+            setGroupLoading(true);
+            const request = groupRequest.current;
+            const source = m.getSource("ap-project-clusters") as GeoJSONSource;
+            try {
+              const [leaves, expansionZoom] = await Promise.all([
+                source.getClusterLeaves(Number(cluster.properties.cluster_id), Number(cluster.properties.point_count), 0),
+                source.getClusterExpansionZoom(Number(cluster.properties.cluster_id)),
+              ]);
+              if (disposed || request !== groupRequest.current) return;
+              const ids = leaves.flatMap(leaf => typeof leaf.properties?.id === "string" ? [leaf.properties.id] : []);
+              const current = clusterMembers(latest.current.items, ids);
+              if (current.members.length !== Number(cluster.properties.point_count))
+                throw new Error("Cluster membership changed while loading");
+              setGroupIds(ids);
+              const coordinates: [number, number] = [cluster.geometry.coordinates[0], cluster.geometry.coordinates[1]];
+              m.easeTo({ center: coordinates, zoom: Math.min(expansionZoom, m.getMaxZoom()), padding: cameraPadding(), duration: latest.current.reducedMotion ? 0 : 700 });
+            } catch (failure) {
+              if (disposed || request !== groupRequest.current) return;
+              console.error("Project cluster could not be opened", failure);
+              setGroupError("กลุ่มโครงการเปลี่ยนระหว่างโหลด กรุณาเลือกกลุ่มอีกครั้ง หรือเปิดรายการโครงการ");
+            } finally {
+              if (!disposed && request === groupRequest.current) { groupPending.current = false; setGroupLoading(false); }
+            }
+            return;
+          }
+          closeGroup();
+          const project = hits.find((h) => h.layer.id === "project-dots" || h.layer.id === "project-cluster-single");
           if (project) {
             const candidates = latest.current.items.filter(
               (a) =>
@@ -342,19 +437,7 @@ export default function FloodMap({
                 a.project.lng === project.properties.lng,
             );
             if (candidates.length > 1) {
-              const panel = document.createElement("div");
-              const popup = new ml.Popup().setLngLat(e.lngLat);
-              candidates.forEach((a) => {
-                const button = document.createElement("button");
-                button.className = "map-popup-project";
-                button.textContent = a.project.name;
-                button.onclick = () => {
-                  latest.current.onFocus(a.project.id);
-                  popup.remove();
-                };
-                panel.appendChild(button);
-              });
-              popup.setDOMContent(panel).addTo(m);
+              setGroupIds(candidates.map(candidate => candidate.project.id));
             } else latest.current.onFocus(String(project.properties.id));
             setStationId(null);
             setTour(false);
@@ -407,7 +490,7 @@ export default function FloodMap({
                 [e.point.x - 12, e.point.y - 12],
                 [e.point.x + 12, e.point.y + 48],
               ],
-              { layers: ["project-dots", "station-dots", "camera-points"] },
+              { layers: ["project-dots", "project-clusters", "project-cluster-single", "station-dots", "camera-points"] },
             ).length
               ? "pointer"
               : "";
@@ -440,29 +523,27 @@ export default function FloodMap({
   useEffect(() => {
     const m = map.current;
     if (!ready || !m || !sceneReady.current) return;
+    // New source data invalidates pending worker replies, while open member lists use current assessments.
+    groupRequest.current++;
+    if (groupPending.current) { setGroupLoading(false); setGroupError("ข้อมูลอัปเดตระหว่างเปิดกลุ่ม กรุณาเลือกกลุ่มอีกครั้ง"); }
+    groupPending.current = false;
+    (m.getSource("ap-projects") as GeoJSONSource).setData(mappedFeatures);
+    (m.getSource("ap-project-clusters") as GeoJSONSource).setData(mappedFeatures);
+  }, [mappedFeatures, ready]);
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m) return;
+    for (const id of ["project-halos", "project-dots", "project-names"])
+      m.setLayoutProperty(id, "visibility", grouped ? "none" : "visible");
+    for (const id of ["project-clusters", "project-cluster-count", "project-cluster-single", "project-cluster-names"])
+      m.setLayoutProperty(id, "visibility", grouped ? "visible" : "none");
+  }, [grouped, ready]);
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m || !sceneReady.current) return;
     const stationItems = stations.filter((s) =>
       s.kind === "water" ? water : rain,
     );
-    const features: FeatureCollection<Point> = {
-      type: "FeatureCollection",
-      features: items
-        .filter((a) => a.project.lat !== null && a.project.lng !== null)
-        .map((a) => ({
-          type: "Feature",
-          geometry: {
-            type: "Point",
-            coordinates: [a.project.lng!, a.project.lat!],
-          },
-          properties: {
-            id: a.project.id,
-            name: a.project.name,
-            lat: a.project.lat,
-            lng: a.project.lng,
-            color: RISK_COLOR[a.risk],
-          },
-        })),
-    };
-    (m.getSource("ap-projects") as GeoJSONSource).setData(features);
     (m.getSource("water-stations") as GeoJSONSource).setData({
       type: "FeatureCollection",
       features: stationItems.map((s) => ({
@@ -477,7 +558,7 @@ export default function FloodMap({
     });
     beacons.current?.update(
       [
-        ...items
+        ...(grouped ? [] : items)
           .filter((a) => a.project.lat !== null && a.project.lng !== null)
           .map((a) => ({
             id: a.project.id,
@@ -498,7 +579,7 @@ export default function FloodMap({
       ],
       stationId ?? focusId ?? undefined,
     );
-  }, [items, stations, ready, water, rain, focusId, stationId]);
+  }, [items, stations, ready, water, rain, focusId, stationId, grouped]);
   useEffect(() => {
     beacons.current?.setAnimated(city && animated && !reducedMotion);
     beacons.current?.setVisible(city);
@@ -607,7 +688,7 @@ export default function FloodMap({
           : [],
     };
     (map.current.getSource("station-link") as GeoJSONSource).setData(data);
-    map.current.setFilter("project-selection", ["==", ["get", "id"], focusId ?? ""]);
+    (map.current.getSource("ap-project-selection") as GeoJSONSource).setData(projectMapFeatures(selected ? [selected] : []));
     map.current.setFilter("station-labels", [
       "in",
       ["get", "id"],
@@ -745,6 +826,14 @@ export default function FloodMap({
             สถานีตรวจวัด
           </span>
         </div>
+        <div className={styles.groupControl}>
+          <label>
+            <span>แสดงเป็นกลุ่ม</span>
+            <Switch checked={grouped} onCheckedChange={setGrouped} aria-label="แสดงโครงการเป็นกลุ่ม" />
+          </label>
+          <small>{grouped ? "ตัวเลข = จำนวนโครงการ · คลิกเพื่อแยกดู" : "แสดงหมุดรายโครงการ"}</small>
+          {items.length > mappedFeatures.features.length && <small>{items.length - mappedFeatures.features.length} โครงการไม่มีพิกัด · ดูในรายการ</small>}
+        </div>
       </div>
       <div className="city-toolbar">
         <button
@@ -752,6 +841,7 @@ export default function FloodMap({
           aria-pressed={listOpen}
           aria-label={`รายการโครงการ ${items.length} โครงการ`}
           onClick={() => {
+            closeGroup();
             setListOpen(!listOpen);
             setLayersOpen(false);
           }}
@@ -765,6 +855,7 @@ export default function FloodMap({
           aria-label="ชั้นข้อมูลแผนที่"
           aria-expanded={layersOpen}
           onClick={() => {
+            closeGroup();
             setLayersOpen(!layersOpen);
             setListOpen(false);
           }}
@@ -892,6 +983,32 @@ export default function FloodMap({
           <button onClick={() => location.reload()}>โหลดใหม่</button>
         </div>
       )}
+      {(groupLoading || groupIds || groupError) && !listOpen && !layersOpen && (
+        <section className={`city-inspector glass-panel ${styles.groupPanel}`} aria-label="โครงการในกลุ่มที่เลือก" onKeyDown={event => { if (event.key === "Escape") closeGroup(); }}>
+          <div className="city-panel-title">
+            <h3 ref={groupTitle} tabIndex={-1}>โครงการในกลุ่ม {groupIds ? group.members.length : ""}</h3>
+            <button aria-label="ปิดกลุ่มโครงการ" onClick={closeGroup}><X size={18} /></button>
+          </div>
+          {groupLoading && <p role="status">กำลังเปิดรายชื่อโครงการ…</p>}
+          {groupError && <p role="alert">{groupError}</p>}
+          {groupIds && <>
+            <p className={styles.groupNote}>สีวงกลมใช้สัญญาณเร่งด่วนที่สุดในกลุ่ม ไม่ใช่ค่าเฉลี่ยหรือพื้นที่น้ำท่วม</p>
+            <div className={styles.groupCounts} aria-label="จำนวนโครงการแยกตามสัญญาณ">
+              {CLUSTER_RISKS.map(risk => <span key={risk}><i style={{ background: RISK_COLOR[risk] }} /><b>{group.counts[risk]}</b>{RISK_LABEL[risk]}</span>)}
+            </div>
+            <div className={styles.groupMembers}>
+              {group.members.map(item => <button className="city-project" key={item.project.id} aria-pressed={focusId === item.project.id} onClick={() => {
+                closeGroup(); setStationId(null); setTour(false); onFocus(item.project.id);
+              }}>
+                <i style={{ background: RISK_COLOR[item.risk] }} />
+                <span>{item.project.name}<small>{RISK_LABEL[item.risk]} · {item.project.province ?? "ไม่ระบุจังหวัด"}</small></span>
+                <ChevronRight size={15} />
+              </button>)}
+            </div>
+            <small>เลือกชื่อเพื่อดูเหตุผลและสิ่งที่ควรทำ · แม้พิกัดซ้อนกันก็เลือกได้ทุกโครงการ</small>
+          </>}
+        </section>
+      )}
       <div className="city-navigation glass-panel">
         <button
           aria-label="ซูมเข้า"
@@ -940,7 +1057,7 @@ export default function FloodMap({
           <RotateCcw size={17} />
         </button>
       </div>
-      {(selected || chosenStation) && !listOpen && !layersOpen && (
+      {(selected || chosenStation) && !listOpen && !layersOpen && !groupIds && !groupLoading && !groupError && (
         <div className="city-inspector glass-panel" aria-label={chosenStation ? "สถานีที่เลือก" : "โครงการที่เลือก"}>
           {chosenStation ? (
             <>
@@ -1118,6 +1235,7 @@ export default function FloodMap({
         <button
           aria-label="แสดงทุกโครงการบนแผนที่"
           onClick={() => {
+            closeGroup();
             setTour(false);
             onFocus(null);
             setStationId(null);
@@ -1132,6 +1250,7 @@ export default function FloodMap({
           className={tour ? "tour-active" : "tour-start"}
           disabled={!stops.length}
           onClick={() => {
+            closeGroup();
             setTour(!tour);
             setStationId(null);
             setListOpen(false);
@@ -1191,6 +1310,7 @@ export default function FloodMap({
             เส้นประเชื่อมโครงการกับสถานีอ้างอิงตามระยะ ไม่ได้บอกทางไหลของน้ำ ·
             แม่น้ำสีน้ำเงินแสดงภูมิศาสตร์
           </p>
+          <p>แสดงเป็นกลุ่มจะรวมเฉพาะโครงการตามระยะบนหน้าจอ ตัวเลขคือจำนวนโครงการตามตัวกรอง สีใช้สัญญาณที่ต้องติดตามก่อน: เร่งด่วน → เฝ้าระวัง → ข้อมูลไม่พอ → ไม่พบสัญญาณสูง สถานีตรวจวัดแสดงแยกต่างหาก</p>
           <button onClick={() => setHelp(false)}>เข้าใจแล้ว</button>
         </div>
       )}
