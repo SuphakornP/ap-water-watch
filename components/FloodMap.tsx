@@ -32,7 +32,7 @@ import { Switch } from "@/components/ui/switch";
 import { cityStyle } from "@/lib/city-style";
 import { stationRisk, tourProjects } from "@/lib/map-signals";
 import { CLUSTER_RISKS, PROJECT_CLUSTER_PROPERTIES, clusterMembers, projectMapFeatures } from "@/lib/map-clusters";
-import { representativeWater, bankMargin, isFresh } from "@/lib/assessment";
+import { representativeWater, bankMargin, isFresh, waterRisk } from "@/lib/assessment";
 import { initialRainPeriod, representativeRain, mapPadding } from "@/lib/presentation";
 import ProvinceRiskOverview from "./ProvinceRiskOverview";
 import DwrStationDetails from "./DwrStationDetails";
@@ -652,7 +652,14 @@ export default function FloodMap({
     });
     m.addLayer({
       id: GISTDA_LAYER_ID, type: "raster", source: GISTDA_SOURCE_ID,
-      paint: { "raster-opacity": 0.65, "raster-fade-duration": 0 },
+      // Rotate the source cyan to soft red while preserving the tile's transparency.
+      paint: {
+        "raster-opacity": 0.65,
+        "raster-hue-rotate": 163,
+        "raster-saturation": -0.25,
+        "raster-brightness-min": 0.25,
+        "raster-fade-duration": 0,
+      },
     }, "road-casing");
     return () => {
       disposed = true;
@@ -1086,7 +1093,7 @@ export default function FloodMap({
             {floodVisible && <>
               <label className={styles.opacityLabel} htmlFor="flood-opacity">ความทึบของภาพ <b>{Math.round(floodOpacity * 100)}%</b></label>
               <input id="flood-opacity" className={styles.opacitySlider} type="range" min="30" max="90" step="5" value={Math.round(floodOpacity * 100)} onChange={event => setFloodOpacity(Number(event.target.value) / 100)} aria-label="ความทึบพื้นที่น้ำท่วม GISTDA" />
-              <p className={styles.floodSwatch}><i />พื้นที่น้ำท่วมที่ตรวจพบจากดาวเทียม</p>
+              <p className={styles.floodSwatch}><i />สีแดงอ่อน: พื้นที่น้ำท่วมที่ตรวจพบจากดาวเทียม</p>
               <p role="status" className={floodState === "error" ? styles.floodError : ""}>{floodLayerMessage[floodState]}</p>
               {floodState === "error" && <button className={styles.floodRetry} onClick={retryFloodExtent}>ลองโหลด GISTDA อีกครั้ง</button>}
             </>}
@@ -1391,7 +1398,7 @@ export default function FloodMap({
                             ? "เท่าระดับตลิ่ง"
                             : "ต่ำกว่าตลิ่ง"}
                     </span>
-                    <b className={margin !== null && margin <= 0 ? "warning-value" : ""}>
+                    <b style={{ color: RISK_COLOR[station?.fresh ? waterRisk(station) : "unknown"] }}>
                       {margin === null ? "—" : Math.abs(margin).toFixed(2)}
                       <small>ม.</small>
                     </b>
@@ -1551,7 +1558,7 @@ export default function FloodMap({
           </p>
           <p>แสดงเป็นกลุ่มจะรวมเฉพาะโครงการตามระยะบนหน้าจอ ตัวเลขคือจำนวนโครงการตามตัวกรอง สีใช้สัญญาณที่ต้องติดตามก่อน: เร่งด่วน → เฝ้าระวัง → ข้อมูลไม่พอ → ไม่พบสัญญาณสูง สถานีตรวจวัดแสดงแยกต่างหาก</p>
           <p>สี่เหลี่ยม DWR ใช้เกณฑ์เตือนภัยของกรมทรัพยากรน้ำ สีฟ้าหมายถึงมีฝน สีเทาอาจไม่มีคำเตือน ข้อมูลเก่า หรือไม่ทราบสถานะ ไม่ใช่การรับรองความปลอดภัย · DWR เป็นข้อมูลประกอบและไม่เปลี่ยนสีคัดกรองโครงการ</p>
-          <p>พื้นที่สีฟ้าในชั้น GISTDA เป็นพื้นที่น้ำท่วมที่ตรวจพบจากภาพดาวเทียมย้อนหลังตามชั้นข้อมูล 7 วันของต้นทาง ไม่ใช่พยากรณ์ ไม่ใช่ความลึกน้ำ และไม่ยืนยันสถานการณ์ขณะนี้ · ยังไม่ทราบวันที่ถ่ายภาพแต่ละพื้นที่ พื้นที่ไม่แสดงสีอาจขาดการตรวจวัด</p>
+          <p>พื้นที่สีแดงอ่อนในชั้น GISTDA เป็นพื้นที่น้ำท่วมที่ตรวจพบจากภาพดาวเทียมย้อนหลังตามชั้นข้อมูล 7 วันของต้นทาง แยกจากแม่น้ำและแหล่งน้ำสีฟ้าบนแผนที่ ไม่ใช่พยากรณ์ ไม่ใช่ความลึกน้ำ และไม่ยืนยันสถานการณ์ขณะนี้ · ยังไม่ทราบวันที่ถ่ายภาพแต่ละพื้นที่ พื้นที่ไม่แสดงสีอาจขาดการตรวจวัด</p>
           <button onClick={() => setHelp(false)}>เข้าใจแล้ว</button>
         </div>
       )}

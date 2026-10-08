@@ -4,13 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RotateCcw, RotateCw } from "lucide-react";
+import { RISK_COLOR, type Risk } from "@/lib/flood-types";
 
-export default function StationCrossSection({ margin, reducedMotion = false }: { margin: number | null; reducedMotion?: boolean }) {
+export default function StationCrossSection({ margin, risk, reducedMotion = false }: { margin: number | null; risk: Risk; reducedMotion?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
-  const api = useRef<{ update: (value: number | null) => void; rotate: (step: number) => void; reset: () => void } | null>(null);
+  const api = useRef<{ update: (value: number | null, severity: Risk) => void; rotate: (step: number) => void; reset: () => void } | null>(null);
   const currentMargin = useRef(margin);
+  const currentRisk = useRef(risk);
   const [error, setError] = useState(false);
-  useEffect(() => { currentMargin.current = margin; api.current?.update(margin); }, [margin]);
+  useEffect(() => { currentMargin.current = margin; currentRisk.current = risk; api.current?.update(margin, risk); }, [margin, risk]);
 
   useEffect(() => {
     const container = host.current;
@@ -58,7 +60,7 @@ export default function StationCrossSection({ margin, reducedMotion = false }: {
     box(5.25, 0.025, 0.025, 0, bankY + 0.055, 1.85, 0x41536d);
     const measured = box(2.5, 0.035, 0.045, 0, 0, 1.85, 0x007fb5);
     const render = () => { if (!document.hidden) renderer.render(scene, camera); };
-    const update = (value: number | null) => {
+    const update = (value: number | null, severity: Risk) => {
       const valid = value !== null && Number.isFinite(value);
       water.visible = measured.visible = valid;
       if (valid && value !== null) {
@@ -66,7 +68,7 @@ export default function StationCrossSection({ margin, reducedMotion = false }: {
         water.scale.y = levelY - floorY;
         water.position.y = (levelY + floorY) / 2;
         measured.position.y = levelY;
-        measured.material.color.set(value < 0 ? 0xd6293e : 0x007fb5);
+        measured.material.color.set(severity === "normal" ? "#007fb5" : RISK_COLOR[severity]);
       }
       render();
     };
@@ -83,7 +85,7 @@ export default function StationCrossSection({ margin, reducedMotion = false }: {
     });
     resize.observe(container);
     document.addEventListener("visibilitychange", render);
-    update(currentMargin.current);
+    update(currentMargin.current, currentRisk.current);
     return () => {
       resize.disconnect(); document.removeEventListener("visibilitychange", render); controls.dispose();
       geometry.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); renderer.dispose();

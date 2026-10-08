@@ -1,4 +1,5 @@
 import type { Assessment, NearbyStation, Risk } from "./flood-types";
+import { representativeWater, waterRisk, waterSignalSummary } from "./assessment.ts";
 import { RAIN_THRESHOLDS } from "./presentation.ts";
 
 export type DecisionEvidenceId =
@@ -40,16 +41,6 @@ function isValue(value: number | null): value is number {
   return value !== null && Number.isFinite(value);
 }
 
-function waterStatus(station: NearbyStation): number | null {
-  return isValue(station.value) &&
-    station.status !== null &&
-    Number.isInteger(station.status) &&
-    station.status >= 1 &&
-    station.status <= 5
-    ? station.status
-    : null;
-}
-
 function rainValue(station: NearbyStation, period: "1h" | "24h") {
   const value = period === "1h" ? station.rain1h : station.value;
   return isValue(value) && value >= 0 ? value : null;
@@ -75,33 +66,21 @@ function unavailableObservation(
 }
 
 function waterEvidence(assessment: Assessment): DecisionEvidence {
-  const valid = assessment.water.filter(
-    (station) => station.fresh && waterStatus(station) !== null,
-  );
-  const station =
-    valid.find((station) => station.status === 5) ??
-    valid.find((station) => station.status === 4) ??
-    valid[0];
-  if (!station)
+  const station = representativeWater(assessment);
+  if (!station || !station.fresh || waterRisk(station) === "unknown")
     return unavailableObservation(
       "water",
       "ระดับน้ำปัจจุบัน",
       assessment.water,
-      (candidate) => waterStatus(candidate) !== null,
+      (candidate) => waterRisk(candidate) !== "unknown",
     );
   return {
     id: "water",
     label: "ระดับน้ำปัจจุบัน",
     state: "observed",
     station,
-    severity:
-      station.status === 5 ? "priority" : station.status === 4 ? "watch" : "normal",
-    summary:
-      station.status === 5
-        ? "สถานีรายงานน้ำล้นตลิ่ง ต้องยืนยันผลต่อพื้นที่โครงการ"
-        : station.status === 4
-          ? "สถานีรายงานน้ำมาก ควรตรวจทางระบายและสภาพพื้นที่"
-          : "สถานีน้ำที่มีค่าล่าสุดยังไม่รายงานน้ำมากหรือล้นตลิ่ง",
+    severity: waterRisk(station),
+    summary: waterSignalSummary(station),
   };
 }
 

@@ -1,4 +1,4 @@
 export const APP_INFO = {
-  version: "12",
+  version: "13",
   developer: "Suphakorn P.",
 } as const;

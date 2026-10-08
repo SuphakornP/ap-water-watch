@@ -1,13 +1,9 @@
 import type { Station, Risk, Assessment } from "./flood-types";
-import { isFresh, distanceKm } from "./assessment.ts";
+import { isFresh, distanceKm, waterRisk } from "./assessment.ts";
 
 export function stationRisk(s: Station, now = Date.now()): Risk {
   if (!isFresh(s.observedAt, now)) return "unknown";
-  if (s.kind === "water") {
-    if (s.value === null || s.status === null || s.status < 1 || s.status > 5)
-      return "unknown";
-    return s.status === 5 ? "priority" : s.status === 4 ? "watch" : "normal";
-  }
+  if (s.kind === "water") return waterRisk(s);
   if (s.value === null && s.rain1h === null) return "unknown";
   if (
     (s.value !== null && s.value >= 90.1) ||

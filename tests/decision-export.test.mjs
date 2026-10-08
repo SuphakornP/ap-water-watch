@@ -83,7 +83,7 @@ test("export keeps complete filtered totals while showing the five highest prior
     assess([], "ไม่ทราบ 1"), assess([], "ไม่ทราบ 2"),
     assess([{ ...water, status: 4 }], "เฝ้าระวัง 1"),
     assess([{ ...rain, rain1h: 60 }], "เร่งด่วน 1"),
-    assess([{ ...water, status: 5 }], "เร่งด่วน 2"),
+    assess([{ ...water, value: 3.10, status: 5 }], "เร่งด่วน 2"),
   ];
   const report = snapshot(items);
   assert.equal(report.total, 7);
@@ -105,7 +105,7 @@ test("export carries distinct hourly and daily evidence timestamps", () => {
 });
 
 test("missing and stale observations remain unknown in image and print reports", () => {
-  const staleWater = { ...water, status: 5, observedAt: "2026-10-05T06:00:00Z" };
+  const staleWater = { ...water, value: 3.10, status: 5, observedAt: "2026-10-05T06:00:00Z" };
   const report = snapshot([assess([staleWater])]);
   assert.equal(report.projects[0].risk, "unknown");
   assert.equal(report.counts.normal, 0);
@@ -138,7 +138,7 @@ test("downloaded SVG and print HTML escape upstream names and preserve demo limi
 test("project mode exports the selected project beyond the portfolio top five without counts", () => {
   const items = Array.from({ length: 7 }, (_, index) => assessProject(
     { ...project, id: `project-${index}`, name: `โครงการ ${index}` },
-    index === 6 ? [water, rain] : [{ ...water, status: 5 }], 5, Date.parse(now),
+    index === 6 ? [water, rain] : [{ ...water, value: 3.10, status: 5 }], 5, Date.parse(now),
   ));
   const report = snapshot(items, { mode: "project", projectId: "project-6" });
   assert.equal(report.mode, "project");
@@ -204,7 +204,7 @@ test("partial rainfall never substitutes an hourly value for daily data or treat
 });
 
 test("export rechecks freshness even when assessment was produced earlier", () => {
-  const items = [assess([{ ...water, status: 5 }, { ...rain, rain1h: 125.3, value: 190.7 }])];
+  const items = [assess([{ ...water, value: 3.10, status: 5 }, { ...rain, rain1h: 125.3, value: 190.7 }])];
   const report = createDecisionSnapshot({ items, feed, radius: 5, scopeLabel: "ทดสอบ", mode: "project", projectId: project.id }, "2026-10-06T13:00:00Z");
   assert.equal(items[0].risk, "priority");
   assert.equal(report.projects[0].risk, "unknown");

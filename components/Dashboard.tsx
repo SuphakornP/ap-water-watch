@@ -71,7 +71,7 @@ import { readViewState, writeViewState } from "@/lib/view-state";
 import { useCameras } from "@/lib/use-cameras";
 import { nearbyCameras, type CameraRadius } from "@/lib/cameras";
 import { useProjectTools } from "@/lib/use-project-tools";
-import { assessProject, DEFAULT_RADIUS_KM } from "@/lib/assessment";
+import { assessProject, DEFAULT_RADIUS_KM, WATER_OVERFLOW_PRIORITY_METERS } from "@/lib/assessment";
 import {
   RISK_LABEL,
   RISK_ORDER,
@@ -602,9 +602,9 @@ function Guide() {
             <RiskLabel risk={r} />
             <p>
               {r === "priority"
-                ? "มีสถานีรายงานล้นตลิ่ง หรือฝน ≥ 90.1 มม./24 ชม. หรือ ≥ 50.1 มม./1 ชม."
+                ? `มีสถานีรายงานน้ำล้นตลิ่งและสูงกว่าตลิ่ง ≥ ${WATER_OVERFLOW_PRIORITY_METERS.toFixed(2)} ม. หรือฝน ≥ 90.1 มม./24 ชม. หรือ ≥ 50.1 มม./1 ชม.`
                 : r === "watch"
-                  ? "มีสถานีรายงานน้ำมาก หรือฝน ≥ 35.1 มม./24 ชม. หรือ ≥ 25.1 มม./1 ชม."
+                  ? `มีสถานีรายงานน้ำมาก น้ำล้นตลิ่งต่ำกว่า ${WATER_OVERFLOW_PRIORITY_METERS.toFixed(2)} ม. หรือยังยืนยันส่วนต่างไม่ได้ หรือฝน ≥ 35.1 มม./24 ชม. หรือ ≥ 25.1 มม./1 ชม.`
                   : r === "normal"
                     ? "มีข้อมูลน้ำและฝน 1 ชม./24 ชม. ที่ใช้ได้ และยังไม่มีสัญญาณเข้าเกณฑ์"
                     : "ไม่มีสถานีในระยะ ข้อมูลล่าช้า หรือข้อมูลน้ำและฝนยังไม่ครบ"}

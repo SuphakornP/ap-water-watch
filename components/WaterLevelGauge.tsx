@@ -9,8 +9,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { bankMargin } from "@/lib/assessment";
-import type { NearbyStation } from "@/lib/flood-types";
+import { bankMargin, waterRisk } from "@/lib/assessment";
+import { RISK_COLOR, type NearbyStation } from "@/lib/flood-types";
 import styles from "./WaterLevelGauge.module.css";
 
 interface WaterLevelGaugeProps {
@@ -49,6 +49,8 @@ export default function WaterLevelGauge({ station }: WaterLevelGaugeProps) {
   const extent = Math.max(1, Math.ceil(magnitude + Math.min(magnitude / 4, 1)));
   const overflow = level > 0;
   const waterColor = "#007fb5";
+  const severity = station?.fresh ? waterRisk(station) : "unknown";
+  const readingColor = severity === "normal" ? waterColor : RISK_COLOR[severity];
   const signedValue = `${level > 0 ? "+" : ""}${level.toFixed(2)}`;
   const description =
     level === 0
@@ -120,7 +122,7 @@ export default function WaterLevelGauge({ station }: WaterLevelGaugeProps) {
                 position:
                   level >= 0 ? "insideBottomLeft" : "insideTopLeft",
                 offset: 8,
-                fill: overflow ? "#d6293e" : waterColor,
+                fill: readingColor,
                 fontSize: 13,
                 fontWeight: 500,
               }}

@@ -2,10 +2,45 @@ import type {
   Assessment,
   NearbyStation,
   Project,
+  Risk,
   Station,
 } from "./flood-types";
 export const FRESHNESS_HOURS = 6;
 export const DEFAULT_RADIUS_KM = 5;
+export const WATER_OVERFLOW_PRIORITY_METERS = 0.10;
+
+type WaterReading = Pick<Station, "value" | "bank" | "status">;
+
+export function waterRisk(station: WaterReading): Risk {
+  if (
+    station.value === null || !Number.isFinite(station.value) ||
+    station.status === null || !Number.isInteger(station.status) ||
+    station.status < 1 || station.status > 5
+  ) return "unknown";
+  if (station.status === 5) {
+    if (station.bank === null || !Number.isFinite(station.bank)) return "watch";
+    const excess = station.value - station.bank;
+    // Allow subtraction roundoff at exactly 10 cm, without rounding sub-threshold readings up.
+    const tolerance = Number.EPSILON * Math.max(1, Math.abs(station.value), Math.abs(station.bank)) * 4;
+    return excess >= WATER_OVERFLOW_PRIORITY_METERS - tolerance ? "priority" : "watch";
+  }
+  return station.status === 4 ? "watch" : "normal";
+}
+
+export function waterSignalSummary(station: WaterReading): string {
+  const risk = waterRisk(station);
+  if (risk === "unknown") return "ข้อมูลสถานีน้ำไม่ครบสำหรับประเมิน";
+  if (station.status === 5) {
+    if (risk === "priority")
+      return `สถานีรายงานน้ำล้นตลิ่งอย่างน้อย ${WATER_OVERFLOW_PRIORITY_METERS.toFixed(2)} ม. ต้องยืนยันผลต่อพื้นที่โครงการ`;
+    if (station.bank !== null && Number.isFinite(station.bank) && station.value !== null && station.value > station.bank)
+      return `สถานีรายงานน้ำล้นตลิ่ง แต่ส่วนต่างยังไม่ถึง ${WATER_OVERFLOW_PRIORITY_METERS.toFixed(2)} ม. ควรเฝ้าระวังและตรวจสภาพพื้นที่`;
+    return "สถานีรายงานน้ำล้นตลิ่ง แต่ยังยืนยันส่วนต่างระดับน้ำกับตลิ่งไม่ได้ ควรเฝ้าระวังและตรวจสอบข้อมูล";
+  }
+  return station.status === 4
+    ? "สถานีรายงานน้ำมาก ควรตรวจทางระบายและสภาพพื้นที่"
+    : "สถานีน้ำที่มีค่าล่าสุดยังไม่รายงานน้ำมากหรือล้นตลิ่ง";
+}
 export function isFresh(timestamp: string | null, now = Date.now()): boolean {
   if (!timestamp) return false;
   const age = now - Date.parse(timestamp);
@@ -62,12 +97,7 @@ export function assessProject(
   const water = nearby.filter((s) => s.kind === "water"),
     rain = nearby.filter((s) => s.kind === "rain");
   const validWater = water.filter(
-    (s) =>
-      s.fresh &&
-      s.value !== null &&
-      s.status !== null &&
-      s.status >= 1 &&
-      s.status <= 5,
+    (s) => s.fresh && waterRisk(s) !== "unknown",
   );
   const validRain = rain.filter(
     (s) => s.fresh && (s.value !== null || s.rain1h !== null),
@@ -79,8 +109,9 @@ export function assessProject(
       : validWater.length || validRain.length
         ? "partial"
         : "none";
-  const overflow = validWater.find((s) => s.status === 5),
-    high = validWater.find((s) => s.status === 4);
+  const overflow = validWater.find((s) => waterRisk(s) === "priority"),
+    high = validWater.find((s) => s.status === 5 && waterRisk(s) === "watch") ??
+      validWater.find((s) => s.status === 4);
   const extremeHourly = validRain.find(
       (s) => s.rain1h !== null && s.rain1h >= 50.1,
     ),
@@ -95,7 +126,7 @@ export function assessProject(
       rain,
       coverage,
       trigger: overflow,
-      reason: `สถานี ${overflow.name} ห่าง ${overflow.distance.toFixed(1)} กม. รายงานน้ำล้นตลิ่ง`,
+      reason: `${overflow.name} ห่าง ${overflow.distance.toFixed(1)} กม. · ${waterSignalSummary(overflow)}`,
     };
   if (extremeHourly)
     return {
@@ -125,7 +156,7 @@ export function assessProject(
       rain,
       coverage,
       trigger: high,
-      reason: `สถานี ${high.name} ห่าง ${high.distance.toFixed(1)} กม. รายงานน้ำมาก`,
+      reason: `${high.name} ห่าง ${high.distance.toFixed(1)} กม. · ${waterSignalSummary(high)}`,
     };
   if (heavyHourly)
     return {
@@ -181,9 +212,10 @@ export function bankMargin(station: Pick<NearbyStation, "fresh" | "status" | "ba
 }
 export function representativeWater(a: Assessment): NearbyStation | undefined {
   return (
-    a.water.find((s) => s.fresh && s.value !== null && s.status === 5) ??
-    a.water.find((s) => s.fresh && s.value !== null && s.status === 4) ??
-    a.water.find((s) => s.fresh && s.value !== null && s.status !== null) ??
+    a.water.find((s) => s.fresh && waterRisk(s) === "priority") ??
+    a.water.find((s) => s.fresh && s.status === 5 && waterRisk(s) === "watch") ??
+    a.water.find((s) => s.fresh && waterRisk(s) === "watch") ??
+    a.water.find((s) => s.fresh && waterRisk(s) === "normal") ??
     a.water[0]
   );
 }

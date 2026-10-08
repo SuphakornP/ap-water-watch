@@ -58,7 +58,7 @@ test("compound water and rain signals inform action without inventing a higher r
 test("each factor retains its own strongest station and original timestamp", () => {
   const hourly = { ...rain, id: "hourly", lat: 13.82, rain1h: 60, value: 12 };
   const daily = { ...rain, id: "daily", lat: 13.83, rain1h: 2, value: 100 };
-  const overflow = { ...water, id: "overflow", lat: 13.82, status: 5 };
+  const overflow = { ...water, id: "overflow", lat: 13.82, value: 3.10, status: 5 };
   const decision = decide([water, rain, hourly, daily, overflow]);
   assert.equal(decision.risk, "priority");
   assert.equal(evidence(decision, "water").station.id, "overflow");
@@ -71,7 +71,7 @@ test("each factor retains its own strongest station and original timestamp", () 
 
 test("stale elevated observations cannot create compound signals or observed evidence", () => {
   const decision = decide([
-    { ...water, status: 5, observedAt: "2026-10-05T05:00:00Z" },
+    { ...water, value: 3.10, status: 5, observedAt: "2026-10-05T05:00:00Z" },
     { ...rain, rain1h: 60 },
   ]);
   assert.equal(decision.risk, "priority");
@@ -115,7 +115,7 @@ test("a missing project coordinate yields explicit unknown evidence", () => {
 
 test("future, invalid-status and missing observations are excluded from factual evidence", () => {
   const future = decide([
-    { ...water, status: 5, observedAt: "2026-10-06T06:16:00Z" },
+    { ...water, value: 3.10, status: 5, observedAt: "2026-10-06T06:16:00Z" },
     rain,
   ]);
   assert.equal(future.risk, "unknown");

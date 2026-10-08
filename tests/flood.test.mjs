@@ -87,10 +87,10 @@ test("water statuses 1 and 2 indicate low water, not flood alerts", () => {
   for (const status of [1, 2, 3])
     assert.equal(assess([{ ...station, status }, rain]).risk, "normal");
   assert.equal(assess([{ ...station, status: 4 }]).risk, "watch");
-  assert.equal(assess([{ ...station, status: 5 }]).risk, "priority");
+  assert.equal(assess([{ ...station, value: 3.10, status: 5 }]).risk, "priority");
 });
 test("maximum signal across all nearby stations beats nearest reading", () => {
-  const far = { ...station, id: "far", lat: 13.86, status: 5 };
+  const far = { ...station, id: "far", lat: 13.86, value: 3.10, status: 5 };
   const a = assess([station, rain, far]);
   assert.equal(a.risk, "priority");
   assert.equal(a.trigger.id, "far");
@@ -114,7 +114,7 @@ test("rain thresholds including short intense bursts", () => {
   assert.equal(assess([{ ...rain, value: null, rain1h: 60 }]).risk, "priority");
 });
 test("stale, missing and future readings are excluded without losing fresh alerts", () => {
-  const stale = { ...station, status: 5, observedAt: "2026-10-02T23:59:59Z" };
+  const stale = { ...station, value: 3.10, status: 5, observedAt: "2026-10-02T23:59:59Z" };
   assert.equal(assess([stale, rain]).risk, "unknown");
   assert.equal(assess([{ ...stale, observedAt: null }, rain]).risk, "unknown");
   assert.equal(
@@ -127,10 +127,10 @@ test("stale, missing and future readings are excluded without losing fresh alert
   assert.ok(!isFresh("2026-10-03T06:15:01Z", now));
 });
 test("radius is geometric and ignores province borders", () => {
-  const far = { ...station, lat: 14.5, status: 5 };
+  const far = { ...station, lat: 14.5, value: 3.10, status: 5 };
   assert.equal(assess([station, rain, far]).risk, "normal");
   assert.ok(distanceKm(13.8, 100.5, 13.8, 100.5) === 0);
-  const border = { ...station, province: "Different province", status: 5 };
+  const border = { ...station, province: "Different province", value: 3.10, status: 5 };
   assert.equal(assess([border]).risk, "priority");
   assert.equal(
     assessProject({ ...project, lat: null }, [station, rain], 10, now).risk,
@@ -278,10 +278,10 @@ test("official CAP accepts active public Thai messages and rejects expired/test 
 test("map station symbols keep partial/stale data unknown and preserve severe signals", async () => {
   const { stationRisk } = await import("../lib/map-signals.ts");
   assert.equal(
-    stationRisk({ ...station, status: 5, observedAt: null }, now),
+    stationRisk({ ...station, value: 3.10, status: 5, observedAt: null }, now),
     "unknown",
   );
-  assert.equal(stationRisk({ ...station, status: 5 }, now), "priority");
+  assert.equal(stationRisk({ ...station, value: 3.10, status: 5 }, now), "priority");
   assert.equal(
     stationRisk({ ...rain, value: 0, rain1h: null }, now),
     "unknown",
@@ -294,7 +294,7 @@ test("map station symbols keep partial/stale data unknown and preserve severe si
 });
 test("guided tour visits distinct elevated-signal areas and keeps missing data out", async () => {
   const { tourProjects } = await import("../lib/map-signals.ts");
-  const a = assess([{ ...station, status: 5 }]);
+  const a = assess([{ ...station, value: 3.10, status: 5 }]);
   const near = {
     ...a,
     project: { ...project, id: "near", lat: project.lat + 0.001 },

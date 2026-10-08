@@ -16,7 +16,11 @@ The application uses this public service without credentials. The separate GISTD
 
 The documented product is detection over the latest seven-day source window, not a seven-day forecast or proof of conditions at the time a visitor opens the map. The image response exposes no acquisition date range or latest analysis timestamp. Its HTTP `Date` is a delivery timestamp. Observed cache headers were `public, max-age=3600, s-maxage=86400`, so upstream edge imagery can be cached for up to 24 hours. The UI explicitly marks survey time as unavailable instead of substituting retrieval time.
 
-Transparent pixels may reflect coverage, detection limitations, timing or an absence of detected flood. They do not establish that a location is flood-free. A cyan pixel does not establish current depth, road passability or inundation within a project's legal boundary. Compare the image with station readings, local reports and official guidance.
+Transparent pixels may reflect coverage, detection limitations, timing or an absence of detected flood. They do not establish that a location is flood-free. A detection pixel, displayed in light red, does not establish current depth, road passability or inundation within a project's legal boundary. Compare the image with station readings, local reports and official guidance.
+
+## Display color
+
+The application displays the source cyan detections in light red to distinguish them from blue rivers, canals and ponds on the basemap. MapLibre applies a 163-degree raster hue rotation, saturation of -0.25 and minimum brightness of 0.25 at the existing default opacity of 0.65. A source pixel of RGB (0, 140, 199), verified on 8 October 2026, appears approximately RGB (229, 164, 165) over white at that opacity. This is a display-only color adjustment: source PNG bytes, transparency, geographic coverage and the basemap water colors are unchanged. Layer swatches and map help use the same light-red convention; project alert colors remain separate.
 
 ## Application transport
 

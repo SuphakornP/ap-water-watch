@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { bankMargin, representativeWater } from "@/lib/assessment";
+import { bankMargin, representativeWater, waterRisk } from "@/lib/assessment";
 import { RISK_COLOR, RISK_LABEL, type Assessment, type NearbyStation } from "@/lib/flood-types";
 import { stationRisk } from "@/lib/map-signals";
 import { initialRainPeriod, representativeRain, RAIN_THRESHOLDS, type RainPeriod } from "@/lib/presentation";
@@ -142,6 +142,7 @@ export default function StationAnalysis({ assessment, stationId, onStationChange
   const period = periodChoice.stationId === station?.id ? periodChoice.value : initialRainPeriod(station);
   const rawMargin = bankMargin(station);
   const margin = rawMargin !== null && Number.isFinite(rawMargin) ? rawMargin : null;
+  const waterSeverity = station?.fresh ? waterRisk(station) : "unknown";
   const referenceWater =
     station?.fresh && station.value !== null && Number.isFinite(station.value)
       ? station.value
@@ -247,7 +248,7 @@ export default function StationAnalysis({ assessment, stationId, onStationChange
             <WaterLevelGauge station={station} />
             <div className={styles.readout}>
               <span>ระยะน้ำถึงตลิ่ง ณ สถานี</span>
-              <strong className={margin !== null && margin <= 0 ? styles.warningValue : undefined}>
+              <strong style={{ color: waterSeverity === "normal" ? undefined : RISK_COLOR[waterSeverity] }}>
                 {margin === null ? "—" : Math.abs(margin).toFixed(2)} <small>เมตร</small>
               </strong>
               <b>
@@ -277,7 +278,7 @@ export default function StationAnalysis({ assessment, stationId, onStationChange
         )}
         {kind === "water" && margin !== null && <div className={styles.sceneSection}>
           <button className="button-outline" aria-expanded={sceneOpen} onClick={() => setSceneOpen(!sceneOpen)}>{sceneOpen ? "ปิดภาพอธิบาย 3D" : "สำรวจภาพระดับน้ำ 3D"}</button>
-          {sceneOpen && <Suspense fallback={<p role="status">กำลังเปิดภาพระดับน้ำ</p>}><WaterScene margin={margin} reducedMotion={reducedMotion} /></Suspense>}
+          {sceneOpen && <Suspense fallback={<p role="status">กำลังเปิดภาพระดับน้ำ</p>}><WaterScene margin={margin} risk={waterSeverity} reducedMotion={reducedMotion} /></Suspense>}
         </div>}
         {station && (
           <div className={styles.stationMeta}>
